@@ -1,0 +1,6 @@
+{
+  "name": "AVL Ops",
+  "description": "AVL production checklist, equipment loadout & quantity tracker, setup logs, live team notifications, and warehouse check-in inventory manager.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Spotlight fixture head -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M46,26 L62,26 L67,36 L41,36 Z" />
+    <!-- Audio Waveform / Fader Bars -->
+    <!-- Left fader track and knob (Audio) -->
+    <path
+        android:strokeColor="#546E7A"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M34,44 L34,80" />
+    <path
+        android:fillColor="#FFB300"
+        android:pathData="M29,54 L39,54 A2,2 0 0 1 41,56 L41,60 A2,2 0 0 1 39,62 L29,62 A2,2 0 0 1 27,60 L27,56 A2,2 0 0 1 29,54 Z" />
+    <!-- Center fader track and knob (Video/Matrix) -->
+    <path
+        android:strokeColor="#546E7A"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M54,44 L54,80" />
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M49,46 L59,46 A2,2 0 0 1 61,48 L61,52 A2,2 0 0 1 59,54 L49,54 A2,2 0 0 1 47,52 L47,48 A2,2 0 0 1 49,46 Z" />
+    <!-- Right fader track and knob (Lighting/GrandMA) -->
+    <path
+        android:strokeColor="#546E7A"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M74,44 L74,80" />
+    <path
+        android:fillColor="#76FF03"
+        android:pathData="M69,64 L79,64 A2,2 0 0 1 81,66 L81,70 A2,2 0 0 1 79,72 L69,72 A2,2 0 0 1 67,70 L67,66 A2,2 0 0 1 69,64 Z" />
+    <!-- Checklist Checkmark Badge -->
+    <path
+        android:fillColor="#00E676"
+        android:pathData="M54,76 A9,9 0 1 0 54,94 A9,9 0 1 0 54,76 Z" />
+    <path
+        android:strokeColor="#0B131E"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M50,85 L53,88 L58,82" />
+</vector>
+
