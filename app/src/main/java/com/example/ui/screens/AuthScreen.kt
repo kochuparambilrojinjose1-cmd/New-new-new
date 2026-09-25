@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -261,6 +262,73 @@ fun AuthScreen(
             }
             Spacer(modifier = Modifier.height(10.dp))
         }
+
+        // In-App Upgrade & Version Status Banner
+        Card(
+            colors = CardDefaults.cardColors(containerColor = DenseSurfaceDark),
+            shape = RoundedCornerShape(6.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, DenseBorderDark),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { viewModel.openUpdateDialog() }
+                .testTag("btn_auth_check_updates")
+        ) {
+            Row(
+                modifier = Modifier
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFF00384D))
+                            .border(1.dp, CyanNeon, RoundedCornerShape(6.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.RocketLaunch,
+                            contentDescription = null,
+                            tint = CyanNeon,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "AVL Ops v${viewModel.currentAppVersionName}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "In-App Software Update • Tap to check",
+                            fontSize = 9.sp,
+                            color = DenseTextSecondaryDark
+                        )
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFF00384D))
+                        .border(1.dp, CyanNeon, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 7.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = "Check Updates",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = CyanNeon
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
 
         // Tabs: Sign In / Register
         TabRow(

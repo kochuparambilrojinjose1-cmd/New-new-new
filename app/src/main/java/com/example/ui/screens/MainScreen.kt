@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.AssignmentInd
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Checklist
@@ -26,7 +27,12 @@ import androidx.compose.material.icons.filled.HistoryEdu
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.RocketLaunch
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Warehouse
+import com.example.model.UpdateUiState
+import com.example.ui.components.AppUpdateDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.DropdownMenu
@@ -61,7 +67,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.model.UserRole
 import com.example.ui.components.UserRoleBadge
+import com.example.ui.theme.AmberConcert
 import com.example.ui.theme.CrimsonAlert
 import com.example.ui.theme.CyanNeon
 import com.example.ui.theme.DenseBackgroundDark
@@ -72,12 +80,13 @@ import com.example.ui.theme.DenseTextSecondaryDark
 import com.example.viewmodel.AvlViewModel
 
 enum class MainTab(val title: String, val testTag: String) {
-    CHECKLIST("Pack List", "nav_checklist"),
+    CHECKLIST("Pack", "nav_checklist"),
     WAREHOUSE_RETURN("Return", "nav_return"),
-    ROSTER_RSVP("Roster & RSVP", "nav_roster"),
-    SETUP_LOGS("Setup Logs", "nav_logs"),
+    ROSTER_RSVP("Roster", "nav_roster"),
+    SETUP_LOGS("Logs", "nav_logs"),
     CREW_COMMS("Comms", "nav_comms"),
-    EVENTS("Gigs", "nav_events")
+    EVENTS("Gigs", "nav_events"),
+    ADMIN("Admin", "nav_admin")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -91,6 +100,8 @@ fun MainScreen(
     val selectedEvent by viewModel.selectedEvent.collectAsStateWithLifecycle()
     val notifications by viewModel.currentNotifications.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val showUpdateDialog by viewModel.showUpdateDialog.collectAsStateWithLifecycle()
+    val updateState by viewModel.updateUiState.collectAsStateWithLifecycle()
 
     val unacknowledgedNotifs = notifications.count { !it.isAcknowledged }
     var eventMenuExpanded by remember { mutableStateOf(false) }
@@ -159,6 +170,43 @@ fun MainScreen(
                     }
                 },
                 actions = {
+                    // Quick Admin Portal entry button
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(
+                                if (currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.OWNER)
+                                    Color(0xFF352507) else Color(0xFF1E2833)
+                            )
+                            .border(
+                                1.dp,
+                                if (currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.OWNER)
+                                    AmberConcert else DenseBorderDark,
+                                RoundedCornerShape(6.dp)
+                            )
+                            .clickable { currentTab = MainTab.ADMIN }
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                            .testTag("btn_top_admin_console")
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.AdminPanelSettings,
+                                contentDescription = "Admin Console",
+                                tint = AmberConcert,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "ADMIN",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = AmberConcert
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
                     // Active user / Role badge button (1-tap to switch or register)
                     currentUser?.let { user ->
                         Box(
@@ -189,6 +237,42 @@ fun MainScreen(
                                 .testTag("btn_open_login")
                         ) {
                             Icon(Icons.Default.Lock, contentDescription = "Sign In", tint = CyanNeon, modifier = Modifier.size(16.dp))
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // In-App Update / Upgrade button
+                    val isUpdateAvailable = updateState is UpdateUiState.UpdateAvailable
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(
+                                if (isUpdateAvailable) Color(0xFF3B2807) else Color(0xFF1E2833)
+                            )
+                            .border(
+                                1.dp,
+                                if (isUpdateAvailable) AmberConcert else CyanNeon.copy(alpha = 0.5f),
+                                RoundedCornerShape(6.dp)
+                            )
+                            .clickable { viewModel.openUpdateDialog() }
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                            .testTag("btn_top_ota_update")
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.RocketLaunch,
+                                contentDescription = "Check for Updates",
+                                tint = if (isUpdateAvailable) AmberConcert else CyanNeon,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = if (isUpdateAvailable) "UPGRADE" else "v${viewModel.currentAppVersionName}",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isUpdateAvailable) AmberConcert else Color.White
+                            )
                         }
                     }
 
@@ -248,6 +332,7 @@ fun MainScreen(
                             MainTab.SETUP_LOGS -> Pair(Icons.Default.HistoryEdu, 0)
                             MainTab.CREW_COMMS -> Pair(Icons.Default.Campaign, unacknowledgedNotifs)
                             MainTab.EVENTS -> Pair(Icons.Default.EventNote, 0)
+                            MainTab.ADMIN -> Pair(Icons.Default.AdminPanelSettings, 0)
                         }
 
                         NavigationBarItem(
@@ -324,6 +409,11 @@ fun MainScreen(
                     onNavigateToChecklist = { currentTab = MainTab.CHECKLIST },
                     modifier = Modifier.fillMaxSize()
                 )
+                MainTab.ADMIN -> AdminControlScreen(
+                    viewModel = viewModel,
+                    onNavigateToPublic = { currentTab = MainTab.CHECKLIST },
+                    modifier = Modifier.fillMaxSize()
+                )
             }
         }
     }
@@ -342,5 +432,13 @@ fun MainScreen(
                 modifier = Modifier.fillMaxWidth()
             )
         }
+    }
+
+    // In-App OTA Update & Upgrade Modal Dialog
+    if (showUpdateDialog) {
+        AppUpdateDialog(
+            viewModel = viewModel,
+            onDismiss = { viewModel.dismissUpdateDialog() }
+        )
     }
 }

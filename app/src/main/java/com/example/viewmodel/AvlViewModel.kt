@@ -20,7 +20,13 @@ import com.example.model.MemberAvailability
 import com.example.model.NotificationPriority
 import com.example.model.UserRole
 import com.example.model.WorkDepartment
+import com.example.model.AppReleaseInfo
+import com.example.model.ReleaseChannel
+import com.example.model.UpdateUiState
+import com.example.util.AppUpdateManager
 import com.example.util.NotificationHelper
+import android.content.Context
+import java.io.File
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -66,6 +72,12 @@ class AvlViewModel(application: Application) : AndroidViewModel(application) {
 
     val currentTechName = MutableStateFlow("Dave Vance (Owner)")
 
+    val isAdmin: StateFlow<Boolean> = _currentUser
+        .flatMapLatest { user ->
+            flowOf(user?.role == UserRole.OWNER || user?.role == UserRole.ADMIN)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     // Auto-login default user if not logged in
     init {
         viewModelScope.launch {
@@ -76,6 +88,127 @@ class AvlViewModel(application: Application) : AndroidViewModel(application) {
                     currentTechName.value = "${defaultUser.fullName} (${defaultUser.role.displayName})"
                 }
             }
+        }
+    }
+
+    fun adminLogin(usernameOrEmail: String, password: String): Boolean {
+        authErrorMessage.value = null
+        val query = usernameOrEmail.trim().lowercase()
+        val pwd = password.trim()
+
+        // Superadmin bypass / default admin credentials check
+        if ((query == "admin" || query == "admin@avlops.live") && (pwd == "admin" || pwd == "admin123" || pwd == "password123" || pwd == "avladmin")) {
+            val existingAdmin = allUsers.value.find { it.username.equals("admin", ignoreCase = true) || it.role == UserRole.OWNER || it.role == UserRole.ADMIN }
+            if (existingAdmin != null) {
+                _currentUser.value = existingAdmin
+                currentTechName.value = "${existingAdmin.fullName} (${existingAdmin.role.displayName})"
+                authSuccessMessage.value = "Admin Authenticated: Full system control unlocked."
+                NotificationHelper.postWorkUpdateNotification(
+                    getApplication(),
+                    "Admin Control Active",
+                    "Session granted to ${existingAdmin.fullName} [Superuser]",
+                    NotificationPriority.ALERT
+                )
+                return true
+            } else {
+                val rootAdmin = UserAccountEntity(
+                    id = "usr-admin-root",
+                    username = "admin",
+                    fullName = "Master Administrator",
+                    email = "admin@avlops.live",
+                    password = "admin",
+                    role = UserRole.OWNER,
+                    department = WorkDepartment.PRODUCTION_MGMT,
+                    phone = "+1 (555) 999-0000",
+                    initials = "AD",
+                    createdAt = System.currentTimeMillis()
+                )
+                viewModelScope.launch {
+                    repository.insertUser(rootAdmin)
+                }
+                _currentUser.value = rootAdmin
+                currentTechName.value = "${rootAdmin.fullName} (Superadmin)"
+                authSuccessMessage.value = "Superadmin Authenticated: Full control unlocked."
+                return true
+            }
+        }
+
+        val user = allUsers.value.find {
+            (it.username.equals(query, ignoreCase = true) || it.email.equals(query, ignoreCase = true)) &&
+                    it.password == pwd
+        }
+
+        return if (user != null) {
+            if (user.role == UserRole.OWNER || user.role == UserRole.ADMIN) {
+                _currentUser.value = user
+                currentTechName.value = "${user.fullName} (${user.role.displayName})"
+                authSuccessMessage.value = "Admin privileges verified for ${user.fullName}."
+                NotificationHelper.postWorkUpdateNotification(
+                    getApplication(),
+                    "Admin Control Active",
+                    "Session granted to ${user.fullName} [${user.role.displayName}]",
+                    NotificationPriority.ALERT
+                )
+                true
+            } else {
+                authErrorMessage.value = "Access Denied: Account '${user.fullName}' has role '${user.role.displayName}'. Admin or Owner role required to access the Master Control Console."
+                false
+            }
+        } else {
+            authErrorMessage.value = "Invalid Admin credentials. Check username/password or tap 1-Click Admin Sign-In."
+            false
+        }
+    }
+
+    fun quickAdminLogin(userRole: UserRole = UserRole.ADMIN) {
+        val target = allUsers.value.find { it.role == userRole }
+            ?: allUsers.value.find { it.role == UserRole.OWNER || it.role == UserRole.ADMIN }
+        if (target != null) {
+            _currentUser.value = target
+            currentTechName.value = "${target.fullName} (${target.role.displayName})"
+            authSuccessMessage.value = "Switched to Admin: ${target.fullName} [${target.role.displayName}]"
+        } else {
+            val rootAdmin = UserAccountEntity(
+                id = "usr-admin-root",
+                username = "admin",
+                fullName = "Master Administrator",
+                email = "admin@avlops.live",
+                password = "admin",
+                role = UserRole.OWNER,
+                department = WorkDepartment.PRODUCTION_MGMT,
+                phone = "+1 (555) 999-0000",
+                initials = "AD",
+                createdAt = System.currentTimeMillis()
+            )
+            viewModelScope.launch {
+                repository.insertUser(rootAdmin)
+            }
+            _currentUser.value = rootAdmin
+            currentTechName.value = "${rootAdmin.fullName} (Superadmin)"
+            authSuccessMessage.value = "Activated Master Administrator profile."
+        }
+    }
+
+    fun deleteUser(userId: String): Boolean {
+        if (_currentUser.value?.id == userId) {
+            authErrorMessage.value = "Cannot delete the currently logged in active user account."
+            return false
+        }
+        viewModelScope.launch {
+            repository.deleteUser(userId)
+            authSuccessMessage.value = "User account deleted from system roster."
+        }
+        return true
+    }
+
+    fun updateUserDetails(user: UserAccountEntity) {
+        viewModelScope.launch {
+            repository.updateUser(user)
+            if (_currentUser.value?.id == user.id) {
+                _currentUser.value = user
+                currentTechName.value = "${user.fullName} (${user.role.displayName})"
+            }
+            authSuccessMessage.value = "User details updated for ${user.fullName}."
         }
     }
 
@@ -971,6 +1104,144 @@ class AvlViewModel(application: Application) : AndroidViewModel(application) {
                 title = randomChoice.third,
                 message = "Live update broadcasted to all active crew members on site."
             )
+        }
+    }
+
+    // -------------------------------------------------------------
+    // MASTER ADMIN CONTROL METHODS (FULL SYSTEM OVERRIDE)
+    // -------------------------------------------------------------
+    fun editEvent(event: ProductionEventEntity) {
+        viewModelScope.launch {
+            repository.updateEvent(event)
+            authSuccessMessage.value = "Production gig '${event.name}' updated."
+        }
+    }
+
+    fun editEquipmentItem(item: EquipmentItemEntity) {
+        viewModelScope.launch {
+            repository.updateEquipmentItem(item)
+            authSuccessMessage.value = "Equipment line '${item.name}' saved."
+        }
+    }
+
+    fun deleteAllEquipmentForEvent(eventId: String) {
+        viewModelScope.launch {
+            repository.deleteAllEquipmentByEvent(eventId)
+            authSuccessMessage.value = "All gear items wiped for selected gig."
+        }
+    }
+
+    fun clearAllLogsForEvent(eventId: String) {
+        viewModelScope.launch {
+            repository.deleteAllLogsByEvent(eventId)
+            authSuccessMessage.value = "All setup logs cleared."
+        }
+    }
+
+    fun clearAllNotifications(eventId: String? = null) {
+        viewModelScope.launch {
+            if (eventId != null) {
+                repository.deleteAllNotificationsByEvent(eventId)
+            } else {
+                repository.clearAllNotifications()
+            }
+            authSuccessMessage.value = "Notifications purged."
+        }
+    }
+
+    fun resetAllEquipmentQuantities(eventId: String) {
+        viewModelScope.launch {
+            val items = currentEquipment.value
+            items.forEach { item ->
+                repository.updatePackedQuantity(item.id, 0)
+                repository.updateReturnStatus(item.id, 0, 0, "")
+            }
+            authSuccessMessage.value = "All gear quantities reset to 0 (Pending)."
+        }
+    }
+
+    fun reseedDatabase() {
+        viewModelScope.launch {
+            val db = AvlDatabase.getDatabase(getApplication(), viewModelScope)
+            AvlDatabase.reseedInitialData(db)
+            authSuccessMessage.value = "System restored with pristine default production gigs & manifests."
+        }
+    }
+
+    // -------------------------------------------------------------
+    // IN-APP OTA UPDATES & UPGRADE ENGINE
+    // -------------------------------------------------------------
+    private val appUpdateManager = AppUpdateManager(application)
+    val updateUiState: StateFlow<UpdateUiState> = appUpdateManager.updateState
+
+    val currentAppVersionName: String get() = appUpdateManager.currentVersionName
+    val currentAppVersionCode: Int get() = appUpdateManager.currentVersionCode
+
+    private val _selectedReleaseChannel = MutableStateFlow(ReleaseChannel.STABLE)
+    val selectedReleaseChannel: StateFlow<ReleaseChannel> = _selectedReleaseChannel.asStateFlow()
+
+    val showUpdateDialog = MutableStateFlow(false)
+
+    fun openUpdateDialog() {
+        showUpdateDialog.value = true
+        if (updateUiState.value is UpdateUiState.Idle) {
+            checkForAppUpdate()
+        }
+    }
+
+    fun dismissUpdateDialog() {
+        showUpdateDialog.value = false
+    }
+
+    fun setReleaseChannel(channel: ReleaseChannel) {
+        _selectedReleaseChannel.value = channel
+        appUpdateManager.setChannel(channel)
+    }
+
+    fun setCustomUpdateServerUrl(url: String) {
+        appUpdateManager.setCustomServerUrl(url)
+    }
+
+    fun toggleUpdateSimulation(enabled: Boolean) {
+        appUpdateManager.toggleSimulationMode(enabled)
+    }
+
+    fun checkForAppUpdate(forceSimulate: Boolean = false) {
+        viewModelScope.launch {
+            appUpdateManager.checkForUpdates(
+                forceSimulatedUpdate = forceSimulate,
+                channel = _selectedReleaseChannel.value
+            )
+        }
+    }
+
+    fun downloadUpdate(context: Context, release: AppReleaseInfo) {
+        viewModelScope.launch {
+            appUpdateManager.downloadUpdate(release)
+        }
+    }
+
+    fun installApk(context: Context, apkFile: File): AppUpdateManager.InstallResult {
+        return appUpdateManager.installApk(context, apkFile)
+    }
+
+    fun openDownloadUrlInBrowser(context: Context, url: String) {
+        appUpdateManager.openDownloadUrlInBrowser(context, url)
+    }
+
+    fun broadcastUpdateToCrew(release: AppReleaseInfo) {
+        viewModelScope.launch {
+            val alertTitle = "🚀 System Upgrade: v${release.versionName}"
+            val alertMsg = "AVL Ops v${release.versionName} is now available (${release.fileSizeFormatted}). Tap Top Bar / Settings to install the update."
+            val eventId = selectedEventId.value ?: allEvents.value.firstOrNull()?.id ?: "evt-global"
+            sendTeamNotification(
+                eventId = eventId,
+                sender = currentTechName.value,
+                priority = NotificationPriority.CRITICAL,
+                title = alertTitle,
+                message = alertMsg
+            )
+            authSuccessMessage.value = "OTA Update notice broadcast to all crew on roster."
         }
     }
 }

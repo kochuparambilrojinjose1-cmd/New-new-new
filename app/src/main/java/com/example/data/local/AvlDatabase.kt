@@ -59,21 +59,12 @@ abstract class AvlDatabase : RoomDatabase() {
                 instance
             }
         }
-    }
 
-    private class AvlDatabaseCallback(
-        private val scope: CoroutineScope
-    ) : RoomDatabase.Callback() {
-        override fun onCreate(db: SupportSQLiteDatabase) {
-            super.onCreate(db)
-            INSTANCE?.let { database ->
-                scope.launch(Dispatchers.IO) {
-                    populateInitialData(database)
-                }
-            }
+        suspend fun reseedInitialData(db: AvlDatabase) {
+            populateInitialData(db)
         }
 
-        private suspend fun populateInitialData(db: AvlDatabase) {
+        suspend fun populateInitialData(db: AvlDatabase) {
             val userDao = db.userAccountDao()
             val availDao = db.eventAvailabilityDao()
             val eventDao = db.eventDao()
@@ -84,6 +75,20 @@ abstract class AvlDatabase : RoomDatabase() {
             val now = System.currentTimeMillis()
             val oneDayMs = 24 * 60 * 60 * 1000L
             val oneHourMs = 60 * 60 * 1000L
+
+            // Seed Super Admin Account
+            val superAdmin = UserAccountEntity(
+                id = "usr-admin-root",
+                username = "admin",
+                fullName = "Master Administrator",
+                email = "admin@avlops.live",
+                password = "admin",
+                role = UserRole.OWNER,
+                department = WorkDepartment.PRODUCTION_MGMT,
+                phone = "+1 (555) 999-0000",
+                initials = "AD",
+                createdAt = now - (60 * oneDayMs)
+            )
 
             // Seed 4 Role Demo Accounts
             val userOwner = UserAccountEntity(
@@ -159,7 +164,7 @@ abstract class AvlDatabase : RoomDatabase() {
                 createdAt = now - (5 * oneDayMs)
             )
 
-            userDao.insertAllUsers(listOf(userOwner, userAdmin, userManager, userCrewAudio, userCrewLight, userCrewStage))
+            userDao.insertAllUsers(listOf(superAdmin, userOwner, userAdmin, userManager, userCrewAudio, userCrewLight, userCrewStage))
 
             // Event 1: Neon Horizon Tour - Live Setup
             val event1Id = "evt-neon-horizon-001"
@@ -613,6 +618,19 @@ abstract class AvlDatabase : RoomDatabase() {
                 )
             )
             availDao.insertAll(availabilities)
+        }
+    }
+
+    private class AvlDatabaseCallback(
+        private val scope: CoroutineScope
+    ) : RoomDatabase.Callback() {
+        override fun onCreate(db: SupportSQLiteDatabase) {
+            super.onCreate(db)
+            INSTANCE?.let { database ->
+                scope.launch(Dispatchers.IO) {
+                    populateInitialData(database)
+                }
+            }
         }
     }
 }

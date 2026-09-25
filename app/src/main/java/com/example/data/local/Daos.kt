@@ -106,6 +106,9 @@ interface EquipmentDao {
     @Query("DELETE FROM equipment_items WHERE id = :id")
     suspend fun deleteItemById(id: String)
 
+    @Query("DELETE FROM equipment_items WHERE eventId = :eventId")
+    suspend fun deleteAllEquipmentByEvent(eventId: String)
+
     @Query("UPDATE equipment_items SET packedQuantity = :packedQty, status = CASE WHEN :packedQty >= targetQuantity THEN 'LOADED' WHEN :packedQty > 0 THEN 'PACKED' ELSE 'PENDING_PACK' END, lastUpdated = :now WHERE id = :id")
     suspend fun updatePackedQuantity(id: String, packedQty: Int, now: Long = System.currentTimeMillis())
 
@@ -123,6 +126,9 @@ interface SetupLogDao {
 
     @Query("DELETE FROM setup_logs WHERE id = :id")
     suspend fun deleteLogById(id: String)
+
+    @Query("DELETE FROM setup_logs WHERE eventId = :eventId")
+    suspend fun deleteAllLogsByEvent(eventId: String)
 }
 
 @Dao
@@ -141,6 +147,12 @@ interface TeamNotificationDao {
 
     @Query("DELETE FROM team_notifications WHERE id = :id")
     suspend fun deleteNotificationById(id: String)
+
+    @Query("DELETE FROM team_notifications WHERE eventId = :eventId")
+    suspend fun deleteAllNotificationsByEvent(eventId: String)
+
+    @Query("DELETE FROM team_notifications")
+    suspend fun clearAllNotifications()
 }
 
 @Dao

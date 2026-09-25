@@ -88,7 +88,12 @@ class AvlRepository(
     suspend fun updateEventStatus(eventId: String, status: EventStatus) =
         eventDao.updateEventStatus(eventId, status)
 
-    suspend fun deleteEvent(id: String) = eventDao.deleteEventById(id)
+    suspend fun deleteEvent(id: String) {
+        equipmentDao.deleteAllEquipmentByEvent(id)
+        setupLogDao.deleteAllLogsByEvent(id)
+        teamNotificationDao.deleteAllNotificationsByEvent(id)
+        eventDao.deleteEventById(id)
+    }
 
     suspend fun addDefaultEquipmentPackage(eventId: String) {
         val items = AvlPresets.defaultInventory.map { preset ->
@@ -126,6 +131,9 @@ class AvlRepository(
 
     suspend fun deleteEquipmentItem(id: String) = equipmentDao.deleteItemById(id)
 
+    suspend fun deleteAllEquipmentByEvent(eventId: String) =
+        equipmentDao.deleteAllEquipmentByEvent(eventId)
+
     suspend fun packAllEquipment(items: List<EquipmentItemEntity>) {
         items.forEach { item ->
             equipmentDao.updatePackedQuantity(item.id, item.targetQuantity)
@@ -148,6 +156,9 @@ class AvlRepository(
 
     suspend fun deleteLog(id: String) = setupLogDao.deleteLogById(id)
 
+    suspend fun deleteAllLogsByEvent(eventId: String) =
+        setupLogDao.deleteAllLogsByEvent(eventId)
+
     // Team Notifications
     fun getNotificationsByEvent(eventId: String): Flow<List<TeamNotificationEntity>> =
         teamNotificationDao.getNotificationsByEvent(eventId)
@@ -162,6 +173,12 @@ class AvlRepository(
         teamNotificationDao.acknowledgeNotification(id, techName)
 
     suspend fun deleteNotification(id: String) = teamNotificationDao.deleteNotificationById(id)
+
+    suspend fun deleteAllNotificationsByEvent(eventId: String) =
+        teamNotificationDao.deleteAllNotificationsByEvent(eventId)
+
+    suspend fun clearAllNotifications() =
+        teamNotificationDao.clearAllNotifications()
 
     // Warehouse Audits
     fun getLatestAuditForEvent(eventId: String): Flow<WarehouseAuditEntity?> =
