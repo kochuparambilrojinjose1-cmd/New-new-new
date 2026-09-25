@@ -235,11 +235,33 @@ fun AppUpdateDialog(
                         UpdateAvailableCard(
                             release = state.release,
                             currentVersion = state.currentVersionName,
+                            onApplyInApp = {
+                                viewModel.applyInAppUpdate(state.release)
+                            },
                             onStartDownload = {
                                 viewModel.downloadUpdate(context, state.release)
                             },
                             onOpenBrowser = {
                                 viewModel.openDownloadUrlInBrowser(context, state.release.downloadUrl)
+                            }
+                        )
+                    }
+
+                    is UpdateUiState.InAppApplying -> {
+                        InAppApplyingCard(
+                            release = state.release,
+                            stepMessage = state.stepMessage,
+                            progress = state.progressPercent
+                        )
+                    }
+
+                    is UpdateUiState.InAppUpdateSuccess -> {
+                        InAppUpdateSuccessCard(
+                            release = state.release,
+                            versionName = state.updatedVersionName,
+                            versionCode = state.updatedVersionCode,
+                            onDone = {
+                                viewModel.dismissUpdateDialog()
                             }
                         )
                     }
@@ -413,8 +435,24 @@ private fun UpToDateCard(
                 color = DenseTextMutedDark,
                 fontSize = 9.sp,
                 fontFamily = FontFamily.Monospace,
-                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
             )
+
+            // Current active feature indicators
+            Surface(
+                color = DenseSurfaceElevatedDark,
+                shape = RoundedCornerShape(6.dp),
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, DenseBorderDark),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+            ) {
+                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("ACTIVE ENGINE CAPABILITIES:", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = LaserGreen)
+                    Text("• 📦 Equipment Loadout Packages & Truck Manifests", fontSize = 9.sp, color = DenseTextPrimaryDark)
+                    Text("• ✅ 8-Phase Safety & Stage Production Checklists", fontSize = 9.sp, color = DenseTextPrimaryDark)
+                    Text("• 🏭 Master Warehouse Stock Balances & Asset Catalog", fontSize = 9.sp, color = DenseTextPrimaryDark)
+                    Text("• 🔄 Immutable Movement & Adjustment Audit Ledger", fontSize = 9.sp, color = DenseTextPrimaryDark)
+                }
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -429,7 +467,7 @@ private fun UpToDateCard(
                 ) {
                     Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Check Again", fontSize = 11.sp)
+                    Text("Check Feed", fontSize = 11.sp)
                 }
 
                 Button(
@@ -440,7 +478,7 @@ private fun UpToDateCard(
                 ) {
                     Icon(Icons.Default.RocketLaunch, contentDescription = null, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Test Upgrade", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("Sync / Re-Apply", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -451,6 +489,7 @@ private fun UpToDateCard(
 private fun UpdateAvailableCard(
     release: AppReleaseInfo,
     currentVersion: String,
+    onApplyInApp: () -> Unit,
     onStartDownload: () -> Unit,
     onOpenBrowser: () -> Unit
 ) {
@@ -534,31 +573,181 @@ private fun UpdateAvailableCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Action Buttons
-            Row(
+            // Action Buttons: In-App Update (Primary) & APK Download (Secondary)
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                // PRIMARY ACTION: Update directly in app
                 Button(
-                    onClick = onStartDownload,
+                    onClick = onApplyInApp,
                     shape = RoundedCornerShape(6.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = CyanNeon, contentColor = DenseBackgroundDark),
-                    modifier = Modifier.weight(1f).height(38.dp).testTag("btn_download_and_install_upgrade")
+                    modifier = Modifier.fillMaxWidth().height(42.dp).testTag("btn_apply_update_in_app")
                 ) {
-                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Download & Upgrade", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Icon(Icons.Default.RocketLaunch, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("⚡ APPLY UPDATE IN-APP NOW", fontSize = 12.sp, fontWeight = FontWeight.Black)
                 }
 
-                OutlinedButton(
-                    onClick = onOpenBrowser,
-                    shape = RoundedCornerShape(6.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = DenseTextPrimaryDark),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, DenseBorderDark),
-                    modifier = Modifier.height(38.dp).testTag("btn_browser_download_fallback")
+                Text(
+                    text = "Applies v${release.versionName} Room database schemas & features directly in the app without APK file reinstall.",
+                    fontSize = 9.sp,
+                    color = DenseTextSecondaryDark,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp)
+                )
+
+                // SECONDARY ACTION: Optional native APK download
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(Icons.Default.OpenInBrowser, contentDescription = "Browser APK", modifier = Modifier.size(16.dp))
+                    OutlinedButton(
+                        onClick = onStartDownload,
+                        shape = RoundedCornerShape(6.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AmberConcert),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, AmberConcert.copy(alpha = 0.6f)),
+                        modifier = Modifier.weight(1f).height(34.dp).testTag("btn_download_and_install_upgrade")
+                    ) {
+                        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Install APK File (Optional)", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = onOpenBrowser,
+                        shape = RoundedCornerShape(6.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = DenseTextPrimaryDark),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, DenseBorderDark),
+                        modifier = Modifier.height(34.dp).testTag("btn_browser_download_fallback")
+                    ) {
+                        Icon(Icons.Default.OpenInBrowser, contentDescription = "Browser APK", modifier = Modifier.size(14.dp))
+                    }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InAppApplyingCard(
+    release: AppReleaseInfo,
+    stepMessage: String,
+    progress: Int
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = DenseSurfaceDark),
+        shape = RoundedCornerShape(8.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, CyanNeon.copy(alpha = 0.6f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            CircularProgressIndicator(
+                color = CyanNeon,
+                strokeWidth = 3.dp,
+                modifier = Modifier.size(36.dp)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "UPGRADING IN-APP: v${release.versionName}",
+                color = CyanNeon,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                letterSpacing = 0.5.sp
+            )
+            Text(
+                text = stepMessage,
+                color = Color.White,
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 4.dp, bottom = 10.dp)
+            )
+            LinearProgressIndicator(
+                progress = { progress / 100f },
+                color = CyanNeon,
+                trackColor = DenseBorderDark,
+                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
+            )
+            Text(
+                text = "$progress% complete • Applying without APK re-install",
+                color = DenseTextMutedDark,
+                fontSize = 9.sp,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun InAppUpdateSuccessCard(
+    release: AppReleaseInfo,
+    versionName: String,
+    versionCode: Int,
+    onDone: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = DenseSurfaceDark),
+        shape = RoundedCornerShape(8.dp),
+        border = androidx.compose.foundation.BorderStroke(1.5.dp, LaserGreen),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF0D331A))
+                    .border(2.dp, LaserGreen, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null, tint = LaserGreen, modifier = Modifier.size(28.dp))
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "🎉 In-App Update Complete!",
+                color = LaserGreen,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp
+            )
+            Text(
+                text = "AVL Ops is now running v$versionName (Build $versionCode)",
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+            Surface(
+                color = DenseSurfaceElevatedDark,
+                shape = RoundedCornerShape(6.dp),
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, DenseBorderDark),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("ACTIVE FEATURES NOW RUNNING:", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = AmberConcert)
+                    Text("• 📦 Room Database Equipment Loadouts & Manifests", fontSize = 9.sp, color = DenseTextPrimaryDark)
+                    Text("• ✅ 8-Phase Safety & Stage Production Checklists", fontSize = 9.sp, color = DenseTextPrimaryDark)
+                    Text("• 🏭 Master Warehouse Stock & Real-time Quantities", fontSize = 9.sp, color = DenseTextPrimaryDark)
+                    Text("• 🔄 Immutable Movement & Adjustment Audit Ledger", fontSize = 9.sp, color = DenseTextPrimaryDark)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+            Button(
+                onClick = onDone,
+                shape = RoundedCornerShape(6.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = LaserGreen, contentColor = DenseBackgroundDark),
+                modifier = Modifier.fillMaxWidth().height(38.dp).testTag("btn_done_in_app_update")
+            ) {
+                Text("Done & Continue", fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

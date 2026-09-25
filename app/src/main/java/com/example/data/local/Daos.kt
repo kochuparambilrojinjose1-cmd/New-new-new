@@ -5,10 +5,15 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
+import com.example.model.AvlCategory
+import com.example.model.ChecklistPhase
 import com.example.model.EventStatus
+import com.example.model.LoadoutStatus
 import com.example.model.MemberAvailability
 import com.example.model.UserRole
+import com.example.model.WorkDepartment
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -162,4 +167,168 @@ interface WarehouseAuditDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAudit(audit: WarehouseAuditEntity)
+}
+
+// -------------------------------------------------------------
+// 1. EQUIPMENT LOADOUT DAO
+// -------------------------------------------------------------
+
+@Dao
+interface EquipmentLoadoutDao {
+    @Query("SELECT * FROM equipment_loadouts ORDER BY createdAt DESC")
+    fun getAllLoadouts(): Flow<List<EquipmentLoadoutEntity>>
+
+    @Query("SELECT * FROM equipment_loadouts WHERE eventId = :eventId ORDER BY department ASC, name ASC")
+    fun getLoadoutsByEvent(eventId: String): Flow<List<EquipmentLoadoutEntity>>
+
+    @Query("SELECT * FROM equipment_loadouts WHERE id = :id")
+    fun getLoadoutById(id: String): Flow<EquipmentLoadoutEntity?>
+
+    @Transaction
+    @Query("SELECT * FROM equipment_loadouts WHERE id = :loadoutId")
+    fun getLoadoutWithItems(loadoutId: String): Flow<LoadoutWithItems?>
+
+    @Transaction
+    @Query("SELECT * FROM equipment_loadouts WHERE eventId = :eventId ORDER BY department ASC, name ASC")
+    fun getEventLoadoutsWithItems(eventId: String): Flow<List<LoadoutWithItems>>
+
+    @Transaction
+    @Query("SELECT * FROM equipment_loadouts ORDER BY createdAt DESC")
+    fun getAllLoadoutsWithItems(): Flow<List<LoadoutWithItems>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLoadout(loadout: EquipmentLoadoutEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllLoadouts(loadouts: List<EquipmentLoadoutEntity>)
+
+    @Update
+    suspend fun updateLoadout(loadout: EquipmentLoadoutEntity)
+
+    @Query("UPDATE equipment_loadouts SET status = :status, updatedAt = :now WHERE id = :loadoutId")
+    suspend fun updateLoadoutStatus(loadoutId: String, status: LoadoutStatus, now: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM equipment_loadouts WHERE id = :id")
+    suspend fun deleteLoadoutById(id: String)
+
+    @Query("DELETE FROM equipment_loadouts WHERE eventId = :eventId")
+    suspend fun deleteAllLoadoutsForEvent(eventId: String)
+
+    // Loadout line items
+    @Query("SELECT * FROM loadout_items WHERE loadoutId = :loadoutId ORDER BY category ASC, itemName ASC")
+    fun getItemsForLoadout(loadoutId: String): Flow<List<LoadoutItemEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLoadoutItem(item: LoadoutItemEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllLoadoutItems(items: List<LoadoutItemEntity>)
+
+    @Update
+    suspend fun updateLoadoutItem(item: LoadoutItemEntity)
+
+    @Query("UPDATE loadout_items SET packedQuantity = :packedQty, loadedQuantity = :loadedQty, isVerified = :isVerified WHERE id = :itemId")
+    suspend fun updateItemPackProgress(itemId: String, packedQty: Int, loadedQty: Int, isVerified: Boolean)
+
+    @Query("DELETE FROM loadout_items WHERE id = :id")
+    suspend fun deleteLoadoutItemById(id: String)
+
+    @Query("DELETE FROM loadout_items WHERE loadoutId = :loadoutId")
+    suspend fun deleteAllItemsForLoadout(loadoutId: String)
+}
+
+// -------------------------------------------------------------
+// 2. CHECKLIST ITEM DAO
+// -------------------------------------------------------------
+
+@Dao
+interface ChecklistItemDao {
+    @Query("SELECT * FROM checklist_items WHERE eventId = :eventId ORDER BY phase ASC, sortOrder ASC")
+    fun getChecklistForEvent(eventId: String): Flow<List<ChecklistItemEntity>>
+
+    @Query("SELECT * FROM checklist_items WHERE eventId = :eventId AND phase = :phase ORDER BY sortOrder ASC")
+    fun getChecklistByEventAndPhase(eventId: String, phase: ChecklistPhase): Flow<List<ChecklistItemEntity>>
+
+    @Query("SELECT COUNT(*) FROM checklist_items WHERE eventId = :eventId AND isCompleted = 0 AND isCritical = 1")
+    fun getPendingCriticalCount(eventId: String): Flow<Int>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertChecklistItem(item: ChecklistItemEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllChecklistItems(items: List<ChecklistItemEntity>)
+
+    @Update
+    suspend fun updateChecklistItem(item: ChecklistItemEntity)
+
+    @Query("UPDATE checklist_items SET isCompleted = :completed, completedBy = :tech, completedAt = :completedAt, verificationNote = :note WHERE id = :id")
+    suspend fun toggleChecklistItem(id: String, completed: Boolean, tech: String, completedAt: Long?, note: String)
+
+    @Query("DELETE FROM checklist_items WHERE id = :id")
+    suspend fun deleteChecklistItemById(id: String)
+
+    @Query("DELETE FROM checklist_items WHERE eventId = :eventId")
+    suspend fun deleteAllChecklistForEvent(eventId: String)
+
+    // Templates
+    @Query("SELECT * FROM checklist_templates ORDER BY phase ASC, sortOrder ASC")
+    fun getAllChecklistTemplates(): Flow<List<ChecklistTemplateEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllTemplates(templates: List<ChecklistTemplateEntity>)
+}
+
+// -------------------------------------------------------------
+// 3. WAREHOUSE INVENTORY & QUANTITY TRANSACTIONS DAO
+// -------------------------------------------------------------
+
+@Dao
+interface WarehouseInventoryDao {
+    @Query("SELECT * FROM warehouse_inventory ORDER BY category ASC, itemName ASC")
+    fun getAllInventory(): Flow<List<WarehouseInventoryEntity>>
+
+    @Query("SELECT * FROM warehouse_inventory WHERE category = :category ORDER BY itemName ASC")
+    fun getInventoryByCategory(category: AvlCategory): Flow<List<WarehouseInventoryEntity>>
+
+    @Query("SELECT * FROM warehouse_inventory WHERE availableQty <= minimumThresholdQty ORDER BY availableQty ASC")
+    fun getLowStockInventory(): Flow<List<WarehouseInventoryEntity>>
+
+    @Query("SELECT * FROM warehouse_inventory WHERE id = :id")
+    fun getInventoryItemById(id: String): Flow<WarehouseInventoryEntity?>
+
+    @Query("SELECT * FROM warehouse_inventory WHERE skuOrBarcode = :barcode LIMIT 1")
+    suspend fun getItemByBarcode(barcode: String): WarehouseInventoryEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInventoryItem(item: WarehouseInventoryEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllInventoryItems(items: List<WarehouseInventoryEntity>)
+
+    @Update
+    suspend fun updateInventoryItem(item: WarehouseInventoryEntity)
+
+    @Query("UPDATE warehouse_inventory SET availableQty = :available, allocatedQty = :allocated, maintenanceQty = :maintenance, lastAuditedAt = :now WHERE id = :id")
+    suspend fun updateQuantities(id: String, available: Int, allocated: Int, maintenance: Int, now: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM warehouse_inventory WHERE id = :id")
+    suspend fun deleteInventoryItemById(id: String)
+
+    // Transactions
+    @Query("SELECT * FROM inventory_transactions WHERE inventoryItemId = :itemId ORDER BY timestamp DESC")
+    fun getTransactionsForItem(itemId: String): Flow<List<InventoryTransactionEntity>>
+
+    @Query("SELECT * FROM inventory_transactions ORDER BY timestamp DESC LIMIT 100")
+    fun getRecentTransactions(): Flow<List<InventoryTransactionEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTransaction(transaction: InventoryTransactionEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllTransactions(transactions: List<InventoryTransactionEntity>)
+
+    // Relational
+    @Transaction
+    @Query("SELECT * FROM warehouse_inventory WHERE id = :id")
+    fun getInventoryItemWithTransactions(id: String): Flow<InventoryItemWithTransactions?>
 }

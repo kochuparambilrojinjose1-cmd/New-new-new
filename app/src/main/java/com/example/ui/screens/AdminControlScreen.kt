@@ -75,6 +75,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -101,13 +102,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.local.EquipmentItemEntity
+import com.example.data.local.EquipmentLoadoutEntity
+import com.example.data.local.InventoryItemWithTransactions
+import com.example.data.local.InventoryTransactionEntity
+import com.example.data.local.LoadoutItemEntity
+import com.example.data.local.LoadoutWithItems
 import com.example.data.local.ProductionEventEntity
 import com.example.data.local.SetupLogEntity
 import com.example.data.local.TeamNotificationEntity
 import com.example.data.local.UserAccountEntity
+import com.example.data.local.WarehouseInventoryEntity
 import com.example.model.AvlCategory
 import com.example.model.EventStatus
+import com.example.model.InventoryTransactionType
 import com.example.model.ItemStatus
+import com.example.model.LoadoutStatus
 import com.example.model.LogType
 import com.example.model.MemberAvailability
 import com.example.model.NotificationPriority
@@ -142,6 +151,8 @@ import java.util.Locale
 
 enum class AdminSubsystem(val title: String, val testTag: String) {
     GIGS("🎪 Gigs & Events", "admin_sub_gigs"),
+    LOADOUTS("📦 Loadouts & Manifests", "admin_sub_loadouts"),
+    INVENTORY("🏭 Warehouse Stock", "admin_sub_inventory"),
     EQUIPMENT("🎛️ Gear Manifest", "admin_sub_equipment"),
     ROSTER("👥 Team Roster", "admin_sub_roster"),
     ASSIGNMENTS("📋 Call Roster", "admin_sub_assignments"),
@@ -619,6 +630,13 @@ fun AdminDashboardView(
                     onAddGig = { showAddGigDialog = true },
                     onEditGig = { eventToEdit = it },
                     onDeleteGig = { eventToDelete = it }
+                )
+                AdminSubsystem.LOADOUTS -> AdminLoadoutsSection(
+                    viewModel = viewModel,
+                    selectedEvent = selectedEvent
+                )
+                AdminSubsystem.INVENTORY -> AdminInventorySection(
+                    viewModel = viewModel
                 )
                 AdminSubsystem.EQUIPMENT -> AdminEquipmentSection(
                     viewModel = viewModel,
@@ -1813,6 +1831,8 @@ fun AdminUpdatesSection(
     val context = LocalContext.current
     val updateState by viewModel.updateUiState.collectAsStateWithLifecycle()
     val currentChannel by viewModel.selectedReleaseChannel.collectAsStateWithLifecycle()
+    val activeVersionName by viewModel.activeVersionName.collectAsStateWithLifecycle()
+    val activeVersionCode by viewModel.activeVersionCode.collectAsStateWithLifecycle()
     var simulationMode by remember { mutableStateOf(true) }
 
     Column(
@@ -1842,7 +1862,7 @@ fun AdminUpdatesSection(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.RocketLaunch, contentDescription = null, tint = CyanNeon, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("INSTALLED APP BUILD", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                        Text("ACTIVE APP VERSION", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
                     }
                     Box(
                         modifier = Modifier
@@ -1851,7 +1871,7 @@ fun AdminUpdatesSection(
                             .border(1.dp, CyanNeon, RoundedCornerShape(4.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
-                        Text("v${viewModel.currentAppVersionName} (Build ${viewModel.currentAppVersionCode})", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = CyanNeon)
+                        Text("v$activeVersionName (Build $activeVersionCode)", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = CyanNeon)
                     }
                 }
 
@@ -1882,6 +1902,163 @@ fun AdminUpdatesSection(
                     Column(horizontalAlignment = Alignment.End) {
                         Text("Min SDK", fontSize = 9.sp, color = DenseTextMutedDark)
                         Text("Android 7.0 (API 24+)", fontSize = 10.sp, color = Color.White)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        val dynamicRelease by viewModel.dynamicPublishedRelease.collectAsStateWithLifecycle()
+
+        // -------------------------------------------------------------
+        // Publish App Update Card (OTA Release Publisher)
+        // -------------------------------------------------------------
+        Card(
+            colors = CardDefaults.cardColors(containerColor = DenseSurfaceElevatedDark),
+            shape = RoundedCornerShape(8.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, if (dynamicRelease != null) LaserGreen else CyanNeon),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Campaign, contentDescription = null, tint = AmberConcert, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (dynamicRelease != null) "OTA RELEASE v2.0.0 IS PUBLISHED & LIVE" else "PUBLISH APP UPDATE TO CREW (OTA)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = if (dynamicRelease != null) LaserGreen else Color.White
+                        )
+                    }
+                    Surface(
+                        color = if (dynamicRelease != null) LaserGreen.copy(alpha = 0.2f) else CyanNeon.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(4.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (dynamicRelease != null) LaserGreen else CyanNeon)
+                    ) {
+                        Text(
+                            text = if (dynamicRelease != null) "🟢 ACTIVE BROADCAST" else "READY TO DEPLOY",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (dynamicRelease != null) LaserGreen else CyanNeon,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Release Package: v2.0.0 (Build 2) • Room Database Engine",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
+                )
+                Text(
+                    text = "Publishing this update will push an OTA release manifest to the app and send a critical alert notice to all crew devices on the roster.",
+                    fontSize = 10.sp,
+                    color = DenseTextSecondaryDark,
+                    modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+                )
+
+                // Feature Highlights included in this release
+                Surface(
+                    color = DenseSurfaceDark,
+                    shape = RoundedCornerShape(6.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, DenseBorderDark),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("✨ INCLUDED IN THIS RELEASE:", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = AmberConcert)
+                        Text("• 📦 Room Database Equipment Loadouts: Department packages, truck/vehicle manifests & verified staging", fontSize = 9.sp, color = DenseTextPrimaryDark)
+                        Text("• ✅ 8-Phase Safety & Stage Checklist: Pre-event through post-event with critical alerts & tech sign-offs", fontSize = 9.sp, color = DenseTextPrimaryDark)
+                        Text("• 🏭 Master Warehouse Stock & Catalog: Live stock counts, field allocation & low-inventory warnings", fontSize = 9.sp, color = DenseTextPrimaryDark)
+                        Text("• 🔄 Immutable Inventory Audit Ledger: Dispatch, Return, Adjustment & Maintenance tracking with tech signatures", fontSize = 9.sp, color = DenseTextPrimaryDark)
+                        Text("• 🚀 Direct In-App OTA Engine: Background APK download with live progress & 1-tap installation", fontSize = 9.sp, color = DenseTextPrimaryDark)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            val releaseToPublish = AppReleaseInfo(
+                                versionName = "2.0.0",
+                                versionCode = 2,
+                                title = "AVL Ops v2.0.0 • Room Database Loadouts, Checklists & Warehouse Inventory",
+                                releaseNotes = listOf(
+                                    "📦 Room Database Equipment Loadouts: Complete local persistence for event gear packages, truck/vehicle assignments, weight & power calculations, and verified packing",
+                                    "✅ 8-Phase Safety & Stage Checklist: Pre-event, Load-in, Rigging, Tuning, Soundcheck, Show Run, Load-out & Post-event checklists with critical alerts and tech sign-offs",
+                                    "🏭 Master Warehouse Inventory Quantities: Real-time stock balances, barcode/SKU catalog, field allocation tracking, and low-stock alerts",
+                                    "🔄 Immutable Inventory Audit Ledger: Track Dispatches, Returns, Adjustments, Repairs, Restocks, and Purchases with technician attribution",
+                                    "⚡ Barcode Scanner & Rapid Steppers: High-density crew workflow for staging, loading, and field reconciliation",
+                                    "🚀 In-App OTA Update Engine: Direct in-app update execution with zero APK manual handling"
+                                ),
+                                releaseDate = "September 2026",
+                                fileSizeBytes = 25_128_101L,
+                                downloadUrl = "https://github.com/aistudio/avl-ops/releases/download/v2.0.0/AVL-Production-App.apk",
+                                isMandatory = false,
+                                channel = ReleaseChannel.STABLE,
+                                minSupportedVersion = 1
+                            )
+                            viewModel.publishAppUpdate(releaseToPublish, broadcastToCrew = true)
+                            viewModel.applyInAppUpdate(releaseToPublish)
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = CyanNeon,
+                            contentColor = DenseBackgroundDark
+                        ),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.fillMaxWidth().height(38.dp).testTag("btn_publish_update_v2")
+                    ) {
+                        Icon(Icons.Default.RocketLaunch, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "⚡ Apply In-App & Publish Update v2.0.0",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.openUpdateDialog()
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = AmberConcert),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, AmberConcert),
+                            shape = RoundedCornerShape(4.dp),
+                            modifier = Modifier.weight(1f).height(34.dp).testTag("btn_open_upgrade_modal_from_publish")
+                        ) {
+                            Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Open Upgrade Center", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.resetToFactoryVersion()
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = DenseTextSecondaryDark),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, DenseBorderDark),
+                            shape = RoundedCornerShape(4.dp),
+                            modifier = Modifier.height(34.dp).testTag("btn_reset_version_test")
+                        ) {
+                            Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("Reset Base (v1.0)", fontSize = 10.sp)
+                        }
                     }
                 }
             }
@@ -2035,6 +2212,19 @@ fun AdminUpdatesSection(
                             Icon(Icons.Default.Check, contentDescription = null, tint = LaserGreen, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("v${state.release.versionName} APK downloaded and verified. Ready for installation.", fontSize = 10.sp, color = LaserGreen)
+                        }
+                    }
+                    is UpdateUiState.InAppApplying -> {
+                        Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                            Text("Applying in-app update (${state.progressPercent}%): ${state.stepMessage}", fontSize = 10.sp, color = CyanNeon, fontWeight = FontWeight.Bold)
+                            LinearProgressIndicator(progress = { state.progressPercent / 100f }, color = CyanNeon, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+                        }
+                    }
+                    is UpdateUiState.InAppUpdateSuccess -> {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
+                            Icon(Icons.Default.Verified, contentDescription = null, tint = LaserGreen, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("In-app update applied successfully: v${state.updatedVersionName} (Build ${state.updatedVersionCode}) is active.", fontSize = 11.sp, color = LaserGreen, fontWeight = FontWeight.Bold)
                         }
                     }
                     is UpdateUiState.Error -> {

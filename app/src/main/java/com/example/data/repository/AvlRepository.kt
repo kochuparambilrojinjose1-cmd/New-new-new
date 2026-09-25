@@ -1,9 +1,18 @@
 package com.example.data.repository
 
+import com.example.data.local.ChecklistItemDao
+import com.example.data.local.ChecklistItemEntity
+import com.example.data.local.ChecklistTemplateEntity
 import com.example.data.local.EquipmentDao
 import com.example.data.local.EquipmentItemEntity
+import com.example.data.local.EquipmentLoadoutDao
+import com.example.data.local.EquipmentLoadoutEntity
 import com.example.data.local.EventAvailabilityDao
 import com.example.data.local.EventAvailabilityEntity
+import com.example.data.local.InventoryItemWithTransactions
+import com.example.data.local.InventoryTransactionEntity
+import com.example.data.local.LoadoutItemEntity
+import com.example.data.local.LoadoutWithItems
 import com.example.data.local.ProductionEventDao
 import com.example.data.local.ProductionEventEntity
 import com.example.data.local.SetupLogDao
@@ -14,9 +23,15 @@ import com.example.data.local.UserAccountDao
 import com.example.data.local.UserAccountEntity
 import com.example.data.local.WarehouseAuditDao
 import com.example.data.local.WarehouseAuditEntity
+import com.example.data.local.WarehouseInventoryDao
+import com.example.data.local.WarehouseInventoryEntity
+import com.example.model.AvlCategory
 import com.example.model.AvlPresets
+import com.example.model.ChecklistPhase
 import com.example.model.EventStatus
+import com.example.model.InventoryTransactionType
 import com.example.model.ItemStatus
+import com.example.model.LoadoutStatus
 import com.example.model.MemberAvailability
 import com.example.model.UserRole
 import kotlinx.coroutines.flow.Flow
@@ -29,7 +44,10 @@ class AvlRepository(
     private val teamNotificationDao: TeamNotificationDao,
     private val warehouseAuditDao: WarehouseAuditDao,
     private val userAccountDao: UserAccountDao,
-    private val eventAvailabilityDao: EventAvailabilityDao
+    private val eventAvailabilityDao: EventAvailabilityDao,
+    private val equipmentLoadoutDao: EquipmentLoadoutDao,
+    private val checklistItemDao: ChecklistItemDao,
+    private val warehouseInventoryDao: WarehouseInventoryDao
 ) {
     // Users & Roles
     val allUsers: Flow<List<UserAccountEntity>> = userAccountDao.getAllUsers()
@@ -185,5 +203,129 @@ class AvlRepository(
         warehouseAuditDao.getLatestAuditForEvent(eventId)
 
     suspend fun insertAudit(audit: WarehouseAuditEntity) = warehouseAuditDao.insertAudit(audit)
+
+    // -------------------------------------------------------------
+    // 1. EQUIPMENT LOADOUTS
+    // -------------------------------------------------------------
+    val allLoadouts: Flow<List<EquipmentLoadoutEntity>> = equipmentLoadoutDao.getAllLoadouts()
+
+    val allLoadoutsWithItems: Flow<List<LoadoutWithItems>> = equipmentLoadoutDao.getAllLoadoutsWithItems()
+
+    fun getLoadoutsByEvent(eventId: String): Flow<List<EquipmentLoadoutEntity>> =
+        equipmentLoadoutDao.getLoadoutsByEvent(eventId)
+
+    fun getLoadoutById(id: String): Flow<EquipmentLoadoutEntity?> =
+        equipmentLoadoutDao.getLoadoutById(id)
+
+    fun getLoadoutWithItems(loadoutId: String): Flow<LoadoutWithItems?> =
+        equipmentLoadoutDao.getLoadoutWithItems(loadoutId)
+
+    fun getEventLoadoutsWithItems(eventId: String): Flow<List<LoadoutWithItems>> =
+        equipmentLoadoutDao.getEventLoadoutsWithItems(eventId)
+
+    suspend fun insertLoadout(loadout: EquipmentLoadoutEntity) =
+        equipmentLoadoutDao.insertLoadout(loadout)
+
+    suspend fun updateLoadout(loadout: EquipmentLoadoutEntity) =
+        equipmentLoadoutDao.updateLoadout(loadout)
+
+    suspend fun updateLoadoutStatus(loadoutId: String, status: LoadoutStatus) =
+        equipmentLoadoutDao.updateLoadoutStatus(loadoutId, status)
+
+    suspend fun deleteLoadout(id: String) =
+        equipmentLoadoutDao.deleteLoadoutById(id)
+
+    fun getItemsForLoadout(loadoutId: String): Flow<List<LoadoutItemEntity>> =
+        equipmentLoadoutDao.getItemsForLoadout(loadoutId)
+
+    suspend fun insertLoadoutItem(item: LoadoutItemEntity) =
+        equipmentLoadoutDao.insertLoadoutItem(item)
+
+    suspend fun updateLoadoutItemPackProgress(
+        itemId: String,
+        packedQty: Int,
+        loadedQty: Int,
+        isVerified: Boolean
+    ) = equipmentLoadoutDao.updateItemPackProgress(itemId, packedQty, loadedQty, isVerified)
+
+    suspend fun deleteLoadoutItem(id: String) =
+        equipmentLoadoutDao.deleteLoadoutItemById(id)
+
+    // -------------------------------------------------------------
+    // 2. CHECKLIST ITEMS & TEMPLATES
+    // -------------------------------------------------------------
+    fun getChecklistForEvent(eventId: String): Flow<List<ChecklistItemEntity>> =
+        checklistItemDao.getChecklistForEvent(eventId)
+
+    fun getChecklistByEventAndPhase(eventId: String, phase: ChecklistPhase): Flow<List<ChecklistItemEntity>> =
+        checklistItemDao.getChecklistByEventAndPhase(eventId, phase)
+
+    fun getPendingCriticalCount(eventId: String): Flow<Int> =
+        checklistItemDao.getPendingCriticalCount(eventId)
+
+    suspend fun toggleChecklistItem(
+        id: String,
+        completed: Boolean,
+        tech: String,
+        note: String
+    ) = checklistItemDao.toggleChecklistItem(
+        id = id,
+        completed = completed,
+        tech = tech,
+        completedAt = if (completed) System.currentTimeMillis() else null,
+        note = note
+    )
+
+    suspend fun insertChecklistItem(item: ChecklistItemEntity) =
+        checklistItemDao.insertChecklistItem(item)
+
+    suspend fun deleteChecklistItem(id: String) =
+        checklistItemDao.deleteChecklistItemById(id)
+
+    val allChecklistTemplates: Flow<List<ChecklistTemplateEntity>> =
+        checklistItemDao.getAllChecklistTemplates()
+
+    // -------------------------------------------------------------
+    // 3. WAREHOUSE INVENTORY & QUANTITY ADJUSTMENTS
+    // -------------------------------------------------------------
+    val allInventory: Flow<List<WarehouseInventoryEntity>> =
+        warehouseInventoryDao.getAllInventory()
+
+    val lowStockInventory: Flow<List<WarehouseInventoryEntity>> =
+        warehouseInventoryDao.getLowStockInventory()
+
+    fun getInventoryByCategory(category: AvlCategory): Flow<List<WarehouseInventoryEntity>> =
+        warehouseInventoryDao.getInventoryByCategory(category)
+
+    fun getInventoryItemById(id: String): Flow<WarehouseInventoryEntity?> =
+        warehouseInventoryDao.getInventoryItemById(id)
+
+    fun getInventoryItemWithTransactions(id: String): Flow<InventoryItemWithTransactions?> =
+        warehouseInventoryDao.getInventoryItemWithTransactions(id)
+
+    suspend fun insertInventoryItem(item: WarehouseInventoryEntity) =
+        warehouseInventoryDao.insertInventoryItem(item)
+
+    suspend fun updateInventoryItem(item: WarehouseInventoryEntity) =
+        warehouseInventoryDao.updateInventoryItem(item)
+
+    suspend fun updateInventoryQuantities(
+        id: String,
+        available: Int,
+        allocated: Int,
+        maintenance: Int
+    ) = warehouseInventoryDao.updateQuantities(id, available, allocated, maintenance)
+
+    suspend fun deleteInventoryItem(id: String) =
+        warehouseInventoryDao.deleteInventoryItemById(id)
+
+    val recentInventoryTransactions: Flow<List<InventoryTransactionEntity>> =
+        warehouseInventoryDao.getRecentTransactions()
+
+    fun getTransactionsForItem(itemId: String): Flow<List<InventoryTransactionEntity>> =
+        warehouseInventoryDao.getTransactionsForItem(itemId)
+
+    suspend fun recordInventoryTransaction(transaction: InventoryTransactionEntity) =
+        warehouseInventoryDao.insertTransaction(transaction)
 }
 

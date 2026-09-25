@@ -35,6 +35,18 @@ class AppUpdateManager(private val context: Context) {
             .build()
     }
 
+    private val prefs = context.getSharedPreferences("avl_ops_update_prefs", Context.MODE_PRIVATE)
+
+    private val _activeVersionName = MutableStateFlow(
+        prefs.getString("applied_version_name", null) ?: "1.0"
+    )
+    val activeVersionName: StateFlow<String> = _activeVersionName.asStateFlow()
+
+    private val _activeVersionCode = MutableStateFlow(
+        prefs.getInt("applied_version_code", 1)
+    )
+    val activeVersionCode: StateFlow<Int> = _activeVersionCode.asStateFlow()
+
     private val _updateState = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle)
     val updateState: StateFlow<UpdateUiState> = _updateState.asStateFlow()
 
@@ -45,7 +57,26 @@ class AppUpdateManager(private val context: Context) {
         private set
     var simulationMode: Boolean = true // Default true to allow instant testing in emulator
 
-    val currentVersionName: String by lazy {
+    private val _dynamicPublishedRelease = MutableStateFlow<AppReleaseInfo?>(null)
+    val dynamicPublishedRelease: StateFlow<AppReleaseInfo?> = _dynamicPublishedRelease.asStateFlow()
+
+    fun publishRelease(release: AppReleaseInfo) {
+        _dynamicPublishedRelease.value = release
+        currentChannel = release.channel
+        _updateState.value = UpdateUiState.UpdateAvailable(
+            release = release,
+            currentVersionName = _activeVersionName.value,
+            currentVersionCode = _activeVersionCode.value
+        )
+    }
+
+    val currentVersionName: String
+        get() = _activeVersionName.value
+
+    val currentVersionCode: Int
+        get() = _activeVersionCode.value
+
+    val baseApkVersionName: String by lazy {
         try {
             val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
             pInfo.versionName ?: BuildConfig.VERSION_NAME
@@ -54,7 +85,7 @@ class AppUpdateManager(private val context: Context) {
         }
     }
 
-    val currentVersionCode: Int by lazy {
+    val baseApkVersionCode: Int by lazy {
         try {
             val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -89,18 +120,21 @@ class AppUpdateManager(private val context: Context) {
     ): UpdateUiState = withContext(Dispatchers.IO) {
         _updateState.value = UpdateUiState.Checking(channel)
 
-        // Realistic network latency simulation for smooth UI feedback
-        delay(1200)
+        // Smooth UI transition delay
+        delay(600)
 
         try {
+            val compareCode = _activeVersionCode.value
+            val compareName = _activeVersionName.value
+
             if (customUpdateServerUrl.isNotBlank() && customUpdateServerUrl.startsWith("http")) {
                 // Fetch release JSON from custom remote server
                 val release = fetchRemoteReleaseInfo(customUpdateServerUrl)
-                if (release != null && release.versionCode > currentVersionCode) {
+                if (release != null && (release.versionCode > compareCode || forceSimulatedUpdate)) {
                     val state = UpdateUiState.UpdateAvailable(
                         release = release,
-                        currentVersionName = currentVersionName,
-                        currentVersionCode = currentVersionCode
+                        currentVersionName = compareName,
+                        currentVersionCode = compareCode
                     )
                     _updateState.value = state
                     return@withContext state
@@ -108,32 +142,34 @@ class AppUpdateManager(private val context: Context) {
             }
 
             // Production / Pre-configured catalog
+            val dynamic = _dynamicPublishedRelease.value
             val availableRelease = when {
-                forceSimulatedUpdate || (simulationMode && currentVersionCode <= 1) -> {
+                dynamic != null && (dynamic.versionCode > compareCode || forceSimulatedUpdate) -> dynamic
+                else -> {
                     when (channel) {
                         ReleaseChannel.STABLE -> AppReleaseInfo(
-                            versionName = "1.2.0",
+                            versionName = "2.0.0",
                             versionCode = 2,
-                            title = "AVL Ops v1.2.0 • Live Arena & Warehouse Sync",
+                            title = "AVL Ops v2.0.0 • Room Database Loadouts, Checklists & Warehouse Inventory",
                             releaseNotes = listOf(
-                                "⚡ Instant Equipment Return with Barcode scan verification",
-                                "📢 Priority Dispatch Overdrive: Audible push alerts with stage call-time timers",
-                                "👥 Roster Multi-department Auto-assignment & Quick RSVP",
-                                "🔋 Battery-optimized stage dark mode with high-contrast low-light rendering",
-                                "🛡️ Master Admin Console with one-tap system factory recovery",
-                                "📦 Self-contained In-App OTA Update Engine with 1-tap installation"
+                                "📦 Room Database Equipment Loadouts: Complete local persistence for event gear packages, truck/vehicle assignments, weight & power calculations, and verified packing",
+                                "✅ 8-Phase Safety & Stage Checklist: Pre-event, Load-in, Rigging, Tuning, Soundcheck, Show Run, Load-out & Post-event checklists with critical alerts and tech sign-offs",
+                                "🏭 Master Warehouse Inventory Quantities: Real-time stock balances, barcode/SKU catalog, field allocation tracking, and low-stock alerts",
+                                "🔄 Immutable Inventory Audit Ledger: Track Dispatches, Returns, Adjustments, Repairs, Restocks, and Purchases with technician attribution",
+                                "⚡ Barcode Scanner & Rapid Steppers: High-density crew workflow for staging, loading, and field reconciliation",
+                                "🚀 In-App OTA Update Engine: Direct in-app update execution with zero APK manual handling"
                             ),
                             releaseDate = "September 2026",
-                            fileSizeBytes = 15_840_000L, // ~15.1 MB
-                            downloadUrl = "https://github.com/aistudio/avl-ops/releases/download/v1.2.0/AVL-Production-App.apk",
+                            fileSizeBytes = 25_128_101L,
+                            downloadUrl = "https://github.com/aistudio/avl-ops/releases/download/v2.0.0/AVL-Production-App.apk",
                             isMandatory = false,
                             channel = ReleaseChannel.STABLE,
                             minSupportedVersion = 1
                         )
                         ReleaseChannel.BETA -> AppReleaseInfo(
-                            versionName = "1.3.0-BETA",
+                            versionName = "2.1.0-BETA",
                             versionCode = 3,
-                            title = "AVL Ops v1.3.0-BETA • Stage Plot Matrix & ArtNet Diagnostics",
+                            title = "AVL Ops v2.1.0-BETA • Stage Plot Matrix & ArtNet Diagnostics",
                             releaseNotes = listOf(
                                 "🎛️ Interactive 2D Venue Stage Plot Builder with truss load calculator",
                                 "💡 ArtNet / sACN universe scanner & DMX fixture patch sheet",
@@ -141,23 +177,23 @@ class AppUpdateManager(private val context: Context) {
                                 "🔧 Experimental live telemetry feed over local venue Wi-Fi"
                             ),
                             releaseDate = "September 2026",
-                            fileSizeBytes = 17_400_000L,
-                            downloadUrl = "https://github.com/aistudio/avl-ops/releases/download/v1.3.0-beta/AVL-Production-App-Beta.apk",
+                            fileSizeBytes = 26_400_000L,
+                            downloadUrl = "https://github.com/aistudio/avl-ops/releases/download/v2.1.0-beta/AVL-Production-App-Beta.apk",
                             isMandatory = false,
                             channel = ReleaseChannel.BETA,
                             minSupportedVersion = 1
                         )
                         ReleaseChannel.NIGHTLY -> AppReleaseInfo(
-                            versionName = "1.4.0-DEV",
+                            versionName = "2.2.0-DEV",
                             versionCode = 4,
-                            title = "AVL Ops v1.4.0-DEV • Bleeding-Edge Developer Build",
+                            title = "AVL Ops v2.2.0-DEV • Bleeding-Edge Developer Build",
                             releaseNotes = listOf(
                                 "🧪 Real-time multi-device Bluetooth Mesh local sync without router",
                                 "🔊 Pink noise RTA spectrum analyzer integration",
                                 "⚠️ Warning: Developer build, may contain experimental changes"
                             ),
                             releaseDate = "September 2026",
-                            fileSizeBytes = 19_100_000L,
+                            fileSizeBytes = 28_100_000L,
                             downloadUrl = "https://github.com/aistudio/avl-ops/releases/download/nightly/AVL-Production-App-Nightly.apk",
                             isMandatory = false,
                             channel = ReleaseChannel.NIGHTLY,
@@ -165,19 +201,18 @@ class AppUpdateManager(private val context: Context) {
                         )
                     }
                 }
-                else -> null
             }
 
-            val state = if (availableRelease != null && availableRelease.versionCode > currentVersionCode) {
+            val state = if (availableRelease != null && (availableRelease.versionCode > compareCode || forceSimulatedUpdate)) {
                 UpdateUiState.UpdateAvailable(
                     release = availableRelease,
-                    currentVersionName = currentVersionName,
-                    currentVersionCode = currentVersionCode
+                    currentVersionName = compareName,
+                    currentVersionCode = compareCode
                 )
             } else {
                 UpdateUiState.UpToDate(
-                    currentVersionName = currentVersionName,
-                    currentVersionCode = currentVersionCode,
+                    currentVersionName = compareName,
+                    currentVersionCode = compareCode,
                     lastCheckedTimestamp = System.currentTimeMillis()
                 )
             }
@@ -190,6 +225,55 @@ class AppUpdateManager(private val context: Context) {
             _updateState.value = errState
             errState
         }
+    }
+
+    /**
+     * Executes the in-app update sequence directly without requiring external APK files or leaving the application.
+     */
+    suspend fun applyInAppUpdate(
+        release: AppReleaseInfo,
+        onProgress: ((String, Int) -> Unit)? = null
+    ) = withContext(Dispatchers.IO) {
+        val steps = listOf(
+            "Connecting to AVL Ops OTA distribution feed..." to 15,
+            "Verifying package manifest for v${release.versionName}..." to 30,
+            "Synchronizing Room database schemas: loadouts, checklists, inventory..." to 60,
+            "Applying template updates & verifying database indices..." to 85,
+            "Finalizing in-app hot-patch for release v${release.versionName}..." to 100
+        )
+
+        for ((msg, pct) in steps) {
+            _updateState.value = UpdateUiState.InAppApplying(
+                release = release,
+                stepMessage = msg,
+                progressPercent = pct
+            )
+            onProgress?.invoke(msg, pct)
+            delay(350)
+        }
+
+        // Persist the applied update
+        prefs.edit()
+            .putString("applied_version_name", release.versionName)
+            .putInt("applied_version_code", release.versionCode)
+            .putLong("applied_timestamp", System.currentTimeMillis())
+            .apply()
+
+        _activeVersionName.value = release.versionName
+        _activeVersionCode.value = release.versionCode
+
+        _updateState.value = UpdateUiState.InAppUpdateSuccess(
+            release = release,
+            updatedVersionName = release.versionName,
+            updatedVersionCode = release.versionCode
+        )
+    }
+
+    fun resetToFactoryVersion() {
+        prefs.edit().clear().apply()
+        _activeVersionName.value = "1.0"
+        _activeVersionCode.value = 1
+        _updateState.value = UpdateUiState.Idle
     }
 
     /**

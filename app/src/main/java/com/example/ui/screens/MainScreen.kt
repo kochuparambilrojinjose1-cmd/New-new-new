@@ -102,6 +102,7 @@ fun MainScreen(
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val showUpdateDialog by viewModel.showUpdateDialog.collectAsStateWithLifecycle()
     val updateState by viewModel.updateUiState.collectAsStateWithLifecycle()
+    val activeVersionName by viewModel.activeVersionName.collectAsStateWithLifecycle()
 
     val unacknowledgedNotifs = notifications.count { !it.isAcknowledged }
     var eventMenuExpanded by remember { mutableStateOf(false) }
@@ -268,7 +269,7 @@ fun MainScreen(
                             )
                             Spacer(modifier = Modifier.width(3.dp))
                             Text(
-                                text = if (isUpdateAvailable) "UPGRADE" else "v${viewModel.currentAppVersionName}",
+                                text = if (isUpdateAvailable) "UPGRADE" else "v$activeVersionName",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isUpdateAvailable) AmberConcert else Color.White

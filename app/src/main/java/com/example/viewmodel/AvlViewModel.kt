@@ -4,17 +4,28 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AvlDatabase
+import com.example.data.local.ChecklistItemEntity
+import com.example.data.local.ChecklistTemplateEntity
 import com.example.data.local.EquipmentItemEntity
+import com.example.data.local.EquipmentLoadoutEntity
 import com.example.data.local.EventAvailabilityEntity
+import com.example.data.local.InventoryItemWithTransactions
+import com.example.data.local.InventoryTransactionEntity
+import com.example.data.local.LoadoutItemEntity
+import com.example.data.local.LoadoutWithItems
 import com.example.data.local.ProductionEventEntity
 import com.example.data.local.SetupLogEntity
 import com.example.data.local.TeamNotificationEntity
 import com.example.data.local.UserAccountEntity
 import com.example.data.local.WarehouseAuditEntity
+import com.example.data.local.WarehouseInventoryEntity
 import com.example.data.repository.AvlRepository
 import com.example.model.AvlCategory
+import com.example.model.ChecklistPhase
 import com.example.model.EventStatus
+import com.example.model.InventoryTransactionType
 import com.example.model.ItemStatus
+import com.example.model.LoadoutStatus
 import com.example.model.LogType
 import com.example.model.MemberAvailability
 import com.example.model.NotificationPriority
@@ -53,9 +64,16 @@ class AvlViewModel(application: Application) : AndroidViewModel(application) {
             db.teamNotificationDao(),
             db.warehouseAuditDao(),
             db.userAccountDao(),
-            db.eventAvailabilityDao()
+            db.eventAvailabilityDao(),
+            db.equipmentLoadoutDao(),
+            db.checklistItemDao(),
+            db.warehouseInventoryDao()
         )
         NotificationHelper.initChannels(application)
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(800)
+            appUpdateManager.checkForUpdates(channel = ReleaseChannel.STABLE)
+        }
     }
 
     // -------------------------------------------------------------
@@ -560,6 +578,326 @@ class AvlViewModel(application: Application) : AndroidViewModel(application) {
     val damagedItemsCount: StateFlow<Int> = currentEquipment.combine(currentEquipment) { items, _ ->
         items.count { it.status == ItemStatus.BENCH_REPAIR || it.damagedQuantity > 0 }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    // -------------------------------------------------------------
+    // EQUIPMENT LOADOUTS SCHEMA INTEGRATION
+    // -------------------------------------------------------------
+    val allLoadouts: StateFlow<List<EquipmentLoadoutEntity>> = repository.allLoadouts
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allLoadoutsWithItems: StateFlow<List<LoadoutWithItems>> = repository.allLoadoutsWithItems
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val currentEventLoadouts: StateFlow<List<LoadoutWithItems>> = _selectedEventId
+        .flatMapLatest { id ->
+            if (id != null) repository.getEventLoadoutsWithItems(id) else repository.allLoadoutsWithItems
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun createLoadout(
+        name: String,
+        eventId: String?,
+        dept: WorkDepartment,
+        truck: String,
+        notes: String,
+        targetWeightLbs: Double = 0.0,
+        powerDrawAmps: Int = 0
+    ) {
+        viewModelScope.launch {
+            val loadoutId = "ldo-" + UUID.randomUUID().toString().take(8)
+            val loadout = EquipmentLoadoutEntity(
+                id = loadoutId,
+                eventId = eventId,
+                name = name.trim(),
+                department = dept,
+                truckOrVehicle = truck.trim(),
+                targetWeightLbs = targetWeightLbs,
+                powerDrawAmps = powerDrawAmps,
+                status = LoadoutStatus.DRAFT,
+                assignedLeadTech = currentTechName.value,
+                notes = notes.trim()
+            )
+            repository.insertLoadout(loadout)
+            authSuccessMessage.value = "Loadout package '${loadout.name}' created."
+        }
+    }
+
+    fun updateLoadoutStatus(loadoutId: String, status: LoadoutStatus) {
+        viewModelScope.launch {
+            repository.updateLoadoutStatus(loadoutId, status)
+            authSuccessMessage.value = "Loadout status changed to ${status.displayName}."
+        }
+    }
+
+    fun deleteLoadout(loadoutId: String) {
+        viewModelScope.launch {
+            repository.deleteLoadout(loadoutId)
+            authSuccessMessage.value = "Loadout deleted."
+        }
+    }
+
+    fun addLoadoutItem(
+        loadoutId: String,
+        name: String,
+        category: AvlCategory,
+        requiredQty: Int,
+        caseRack: String,
+        barcode: String = "",
+        inventoryItemId: String? = null
+    ) {
+        viewModelScope.launch {
+            val item = LoadoutItemEntity(
+                id = UUID.randomUUID().toString(),
+                loadoutId = loadoutId,
+                inventoryItemId = inventoryItemId,
+                itemName = name.trim(),
+                category = category,
+                requiredQuantity = requiredQty.coerceAtLeast(1),
+                packedQuantity = 0,
+                loadedQuantity = 0,
+                caseOrFlightRack = caseRack.trim(),
+                barcodeOrRfid = barcode.trim()
+            )
+            repository.insertLoadoutItem(item)
+            authSuccessMessage.value = "Added '${item.itemName}' to loadout manifest."
+        }
+    }
+
+    fun updateLoadoutItemProgress(
+        itemId: String,
+        packedQty: Int,
+        loadedQty: Int,
+        isVerified: Boolean
+    ) {
+        viewModelScope.launch {
+            repository.updateLoadoutItemPackProgress(itemId, packedQty, loadedQty, isVerified)
+        }
+    }
+
+    fun deleteLoadoutItem(itemId: String) {
+        viewModelScope.launch {
+            repository.deleteLoadoutItem(itemId)
+        }
+    }
+
+    // -------------------------------------------------------------
+    // PRODUCTION CHECKLIST ITEMS & SAFETY PHASES
+    // -------------------------------------------------------------
+    val currentEventChecklist: StateFlow<List<ChecklistItemEntity>> = _selectedEventId
+        .flatMapLatest { id ->
+            if (id != null) repository.getChecklistForEvent(id) else flowOf(emptyList())
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val selectedChecklistPhase = MutableStateFlow<ChecklistPhase?>(null)
+
+    val filteredEventChecklist: StateFlow<List<ChecklistItemEntity>> = combine(
+        currentEventChecklist,
+        selectedChecklistPhase
+    ) { items, phase ->
+        if (phase == null) items else items.filter { it.phase == phase }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val pendingCriticalChecklistCount: StateFlow<Int> = _selectedEventId
+        .flatMapLatest { id ->
+            if (id != null) repository.getPendingCriticalCount(id) else flowOf(0)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    fun toggleChecklistItem(id: String, completed: Boolean, note: String = "") {
+        viewModelScope.launch {
+            val tech = currentTechName.value
+            repository.toggleChecklistItem(id, completed, tech, note)
+        }
+    }
+
+    fun addChecklistItem(
+        title: String,
+        phase: ChecklistPhase,
+        department: WorkDepartment,
+        isCritical: Boolean,
+        description: String = ""
+    ) {
+        val eventId = _selectedEventId.value ?: return
+        viewModelScope.launch {
+            val item = ChecklistItemEntity(
+                id = "chk-" + UUID.randomUUID().toString().take(8),
+                eventId = eventId,
+                phase = phase,
+                department = department,
+                title = title.trim(),
+                description = description.trim(),
+                isCompleted = false,
+                isCritical = isCritical,
+                sortOrder = currentEventChecklist.value.count { it.phase == phase } + 1
+            )
+            repository.insertChecklistItem(item)
+            authSuccessMessage.value = "Checklist item added to ${phase.displayName}."
+        }
+    }
+
+    fun deleteChecklistItem(id: String) {
+        viewModelScope.launch {
+            repository.deleteChecklistItem(id)
+        }
+    }
+
+    // -------------------------------------------------------------
+    // WAREHOUSE INVENTORY QUANTITIES & STOCK TRANSACTIONS
+    // -------------------------------------------------------------
+    val allInventory: StateFlow<List<WarehouseInventoryEntity>> = repository.allInventory
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val lowStockInventory: StateFlow<List<WarehouseInventoryEntity>> = repository.lowStockInventory
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val selectedInventoryCategory = MutableStateFlow<AvlCategory?>(null)
+    val inventorySearchQuery = MutableStateFlow("")
+
+    val filteredInventory: StateFlow<List<WarehouseInventoryEntity>> = combine(
+        allInventory,
+        selectedInventoryCategory,
+        inventorySearchQuery
+    ) { items, cat, query ->
+        items.filter { item ->
+            val matchesCat = cat == null || item.category == cat
+            val matchesQuery = query.isBlank() ||
+                item.itemName.contains(query, ignoreCase = true) ||
+                item.skuOrBarcode.contains(query, ignoreCase = true) ||
+                item.modelNumber.contains(query, ignoreCase = true) ||
+                item.manufacturer.contains(query, ignoreCase = true) ||
+                item.warehouseAisleBin.contains(query, ignoreCase = true)
+            matchesCat && matchesQuery
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val recentInventoryTransactions: StateFlow<List<InventoryTransactionEntity>> = repository.recentInventoryTransactions
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun addInventoryItem(
+        name: String,
+        category: AvlCategory,
+        department: WorkDepartment,
+        sku: String,
+        model: String,
+        manufacturer: String,
+        totalQty: Int,
+        binLocation: String,
+        unitCost: Double,
+        minThreshold: Int,
+        notes: String = ""
+    ) {
+        viewModelScope.launch {
+            val item = WarehouseInventoryEntity(
+                id = "inv-" + UUID.randomUUID().toString().take(8),
+                skuOrBarcode = sku.trim().uppercase(),
+                itemName = name.trim(),
+                category = category,
+                department = department,
+                modelNumber = model.trim(),
+                manufacturer = manufacturer.trim(),
+                totalStockQty = totalQty.coerceAtLeast(1),
+                availableQty = totalQty.coerceAtLeast(1),
+                allocatedQty = 0,
+                maintenanceQty = 0,
+                minimumThresholdQty = minThreshold.coerceAtLeast(1),
+                warehouseAisleBin = binLocation.trim(),
+                unitReplacementCost = unitCost.coerceAtLeast(0.0),
+                notes = notes.trim()
+            )
+            repository.insertInventoryItem(item)
+
+            // Record Intake Transaction
+            repository.recordInventoryTransaction(
+                InventoryTransactionEntity(
+                    id = UUID.randomUUID().toString(),
+                    inventoryItemId = item.id,
+                    transactionType = InventoryTransactionType.RECEIVE_NEW,
+                    quantityDelta = totalQty,
+                    previousAvailableQty = 0,
+                    newAvailableQty = totalQty,
+                    technicianName = currentTechName.value,
+                    referenceNotes = "Initial stock receipt & catalog registration"
+                )
+            )
+            authSuccessMessage.value = "Registered '${item.itemName}' ($sku) into warehouse inventory."
+        }
+    }
+
+    fun adjustInventoryQuantity(
+        inventoryId: String,
+        type: InventoryTransactionType,
+        delta: Int,
+        notes: String
+    ) {
+        viewModelScope.launch {
+            val item = allInventory.value.find { it.id == inventoryId } ?: return@launch
+            val prevAvailable = item.availableQty
+            val prevAllocated = item.allocatedQty
+            val prevMaint = item.maintenanceQty
+
+            var newAvailable = prevAvailable
+            var newAllocated = prevAllocated
+            var newMaint = prevMaint
+
+            when (type) {
+                InventoryTransactionType.RECEIVE_NEW -> {
+                    newAvailable += delta
+                }
+                InventoryTransactionType.DISPATCH_LOADOUT -> {
+                    newAvailable = (newAvailable - delta).coerceAtLeast(0)
+                    newAllocated += delta
+                }
+                InventoryTransactionType.CHECKIN_RETURN -> {
+                    newAllocated = (newAllocated - delta).coerceAtLeast(0)
+                    newAvailable += delta
+                }
+                InventoryTransactionType.BENCH_MAINTENANCE -> {
+                    newAvailable = (newAvailable - delta).coerceAtLeast(0)
+                    newMaint += delta
+                }
+                InventoryTransactionType.REPAIR_RETURN -> {
+                    newMaint = (newMaint - delta).coerceAtLeast(0)
+                    newAvailable += delta
+                }
+                InventoryTransactionType.CYCLE_COUNT -> {
+                    newAvailable = delta.coerceAtLeast(0)
+                }
+                InventoryTransactionType.DECOMMISSION -> {
+                    newAvailable = (newAvailable - delta).coerceAtLeast(0)
+                }
+            }
+
+            repository.updateInventoryQuantities(
+                id = item.id,
+                available = newAvailable,
+                allocated = newAllocated,
+                maintenance = newMaint
+            )
+
+            repository.recordInventoryTransaction(
+                InventoryTransactionEntity(
+                    id = UUID.randomUUID().toString(),
+                    inventoryItemId = item.id,
+                    eventId = _selectedEventId.value,
+                    transactionType = type,
+                    quantityDelta = delta,
+                    previousAvailableQty = prevAvailable,
+                    newAvailableQty = newAvailable,
+                    technicianName = currentTechName.value,
+                    referenceNotes = notes.trim()
+                )
+            )
+            authSuccessMessage.value = "Stock updated for ${item.itemName} (${type.displayName})."
+        }
+    }
+
+    fun deleteInventoryItem(id: String) {
+        viewModelScope.launch {
+            repository.deleteInventoryItem(id)
+            authSuccessMessage.value = "Asset removed from inventory."
+        }
+    }
 
     fun selectEvent(id: String) {
         _selectedEventId.value = id
@@ -1227,6 +1565,65 @@ class AvlViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openDownloadUrlInBrowser(context: Context, url: String) {
         appUpdateManager.openDownloadUrlInBrowser(context, url)
+    }
+
+    val dynamicPublishedRelease: StateFlow<AppReleaseInfo?> = appUpdateManager.dynamicPublishedRelease
+    val activeVersionName: StateFlow<String> = appUpdateManager.activeVersionName
+    val activeVersionCode: StateFlow<Int> = appUpdateManager.activeVersionCode
+
+    fun applyInAppUpdate(release: AppReleaseInfo) {
+        viewModelScope.launch {
+            appUpdateManager.applyInAppUpdate(release)
+            authSuccessMessage.value = "🎉 Update v${release.versionName} applied directly in-app!"
+            val currentEvtId = selectedEventId.value ?: allEvents.value.firstOrNull()?.id ?: "evt-global"
+            addSetupLog(
+                eventId = currentEvtId,
+                author = currentTechName.value,
+                zone = "In-App Updater",
+                type = LogType.INFO,
+                content = "IN_APP_UPDATE_APPLIED: Applied update v${release.versionName} (Build ${release.versionCode}) directly within the app without APK re-install."
+            )
+        }
+    }
+
+    fun resetToFactoryVersion() {
+        appUpdateManager.resetToFactoryVersion()
+        checkForAppUpdate()
+        authSuccessMessage.value = "App version reset to baseline for testing."
+    }
+
+    fun publishAppUpdate(
+        release: AppReleaseInfo,
+        broadcastToCrew: Boolean = true
+    ) {
+        viewModelScope.launch {
+            appUpdateManager.publishRelease(release)
+
+            if (broadcastToCrew) {
+                val alertTitle = "🚀 System Upgrade: v${release.versionName}"
+                val alertMsg = "AVL Ops v${release.versionName} is now published (${release.fileSizeFormatted}) with Equipment Loadouts, Safety Checklists & Warehouse Inventory! Tap UPGRADE to install."
+                val eventId = selectedEventId.value ?: allEvents.value.firstOrNull()?.id ?: "evt-global"
+                sendTeamNotification(
+                    eventId = eventId,
+                    sender = currentTechName.value,
+                    priority = NotificationPriority.CRITICAL,
+                    title = alertTitle,
+                    message = alertMsg
+                )
+            }
+
+            // Log this action to system audit log
+            val currentEvtId = selectedEventId.value ?: allEvents.value.firstOrNull()?.id ?: "evt-global"
+            addSetupLog(
+                eventId = currentEvtId,
+                author = currentTechName.value,
+                zone = "OTA Console",
+                type = LogType.INFO,
+                content = "RELEASE_PUBLISHED: Admin published App Release v${release.versionName} (${release.title}) via in-app OTA engine."
+            )
+
+            authSuccessMessage.value = "🚀 App update v${release.versionName} successfully published! Live OTA update broadcast to crew."
+        }
     }
 
     fun broadcastUpdateToCrew(release: AppReleaseInfo) {

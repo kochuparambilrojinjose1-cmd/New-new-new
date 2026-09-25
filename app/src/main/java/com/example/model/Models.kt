@@ -137,3 +137,32 @@ object AvlPresets {
         EquipmentPreset("Gaffers Tape 2-inch Pro-Gaff Black (Rolls)", AvlCategory.CABLES_ACCESSORIES, 6, "Expendables Box", "EXP-GAF-01", "Stage crew consumables")
     )
 }
+
+enum class LoadoutStatus(val displayName: String, val iconEmoji: String) {
+    DRAFT("Draft / Planning", "📝"),
+    STAGED_IN_BAY("Staged in Bay", "📦"),
+    LOADED_ON_TRUCK("Loaded on Truck", "🚚"),
+    ON_SITE_DEPLOYED("On-Site Deployed", "🎪"),
+    RETURNED_AUDITED("Returned & Reconciled", "✅")
+}
+
+enum class ChecklistPhase(val displayName: String, val iconEmoji: String, val sortOrder: Int) {
+    PREP_PULL("Prep & Pull", "📦", 1),
+    TRUCK_PACK("Truck Load-In", "🚚", 2),
+    RIGGING_SAFETY("Rigging & Motor Safety", "🏗️", 3),
+    POWER_DISTRO("Power & Camlock Checks", "⚡", 4),
+    SIGNAL_FLOW("Signal Flow & Dante", "🌐", 5),
+    SOUNDCHECK_FOCUS("Sound & Lighting Focus", "🔊", 6),
+    SHOW_READY("Show Go / Line Check", "🎬", 7),
+    STRIKE_AUDIT("Strike & Pack Audit", "🏁", 8)
+}
+
+enum class InventoryTransactionType(val displayName: String, val iconEmoji: String) {
+    RECEIVE_NEW("Stock Intake", "📥"),
+    DISPATCH_LOADOUT("Dispatched to Gig", "🚚"),
+    CHECKIN_RETURN("Returned from Gig", "↩️"),
+    BENCH_MAINTENANCE("Sent to Repair Bench", "🛠️"),
+    REPAIR_RETURN("Repaired & Restocked", "🔧"),
+    CYCLE_COUNT("Inventory Audit Count", "📋"),
+    DECOMMISSION("Decommissioned Asset", "🗑️")
+}

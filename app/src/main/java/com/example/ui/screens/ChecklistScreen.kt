@@ -23,19 +23,25 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AssignmentTurnedIn
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -70,12 +76,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.local.ChecklistItemEntity
 import com.example.data.local.EquipmentItemEntity
 import com.example.model.AvlCategory
+import com.example.model.ChecklistPhase
 import com.example.model.ItemStatus
+import com.example.model.WorkDepartment
 import com.example.ui.components.AvlCategoryBadge
+import com.example.ui.components.DepartmentBadge
 import com.example.ui.components.QuickQuantityStepper
 import com.example.ui.theme.AmberConcert
+import com.example.ui.theme.CrimsonAlert
 import com.example.ui.theme.CyanNeon
 import com.example.ui.theme.CyanNeonGlow
 import com.example.ui.theme.DenseBackgroundDark
@@ -106,6 +117,11 @@ fun ChecklistScreen(
     var showAddItemDialog by remember { mutableStateOf(false) }
     var itemToDelete by remember { mutableStateOf<EquipmentItemEntity?>(null) }
     var itemToEditQty by remember { mutableStateOf<EquipmentItemEntity?>(null) }
+    var activeMode by remember { mutableStateOf("MANIFEST") } // "MANIFEST" or "PHASE_CHECKLIST"
+
+    val allChecklist by viewModel.currentEventChecklist.collectAsStateWithLifecycle()
+    val completedChecklistCount = allChecklist.count { it.isCompleted }
+    val pendingCriticalCount by viewModel.pendingCriticalChecklistCount.collectAsStateWithLifecycle()
 
     val totalRequired = allEventItems.sumOf { it.targetQuantity }
     val totalPacked = allEventItems.sumOf { it.packedQuantity }
@@ -139,13 +155,86 @@ fun ChecklistScreen(
         return
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        LazyColumn(
+    Column(modifier = modifier.fillMaxSize()) {
+        // Mode Selector Tab Bar
+        Surface(
+            color = DenseSurfaceDark,
+            border = androidx.compose.foundation.BorderStroke(1.dp, DenseBorderDark),
+            shape = RoundedCornerShape(8.dp),
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 6.dp)
         ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Button(
+                    onClick = { activeMode = "MANIFEST" },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (activeMode == "MANIFEST") CyanNeon else Color.Transparent,
+                        contentColor = if (activeMode == "MANIFEST") Color.Black else DenseTextSecondaryDark
+                    ),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.weight(1f).height(32.dp).testTag("tab_gear_manifest")
+                ) {
+                    Text(
+                        "📦 Gear Pack ($totalPacked/$totalRequired)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Button(
+                    onClick = { activeMode = "PHASE_CHECKLIST" },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (activeMode == "PHASE_CHECKLIST") CyanNeon else Color.Transparent,
+                        contentColor = if (activeMode == "PHASE_CHECKLIST") Color.Black else DenseTextSecondaryDark
+                    ),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.weight(1f).height(32.dp).testTag("tab_phase_checklist")
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "✅ Safety Checklist ($completedChecklistCount/${allChecklist.size})",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (pendingCriticalCount > 0) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Surface(
+                                shape = CircleShape,
+                                color = CrimsonAlert
+                            ) {
+                                Text(
+                                    "$pendingCriticalCount",
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (activeMode == "PHASE_CHECKLIST") {
+            PhaseChecklistSection(
+                viewModel = viewModel,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
             item {
                 Spacer(modifier = Modifier.height(2.dp))
                 // Packing Progress Banner - High Density
@@ -394,6 +483,8 @@ fun ChecklistScreen(
         ) {
             Icon(Icons.Default.Add, contentDescription = "Add Equipment Item")
         }
+    }
+    }
     }
 
     if (showAddItemDialog) {

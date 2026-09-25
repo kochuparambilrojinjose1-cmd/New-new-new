@@ -56,6 +56,19 @@ sealed interface UpdateUiState {
         val apkFile: File
     ) : UpdateUiState
 
+    data class InAppApplying(
+        val release: AppReleaseInfo,
+        val stepMessage: String,
+        val progressPercent: Int
+    ) : UpdateUiState
+
+    data class InAppUpdateSuccess(
+        val release: AppReleaseInfo,
+        val updatedVersionName: String,
+        val updatedVersionCode: Int,
+        val appliedTimestamp: Long = System.currentTimeMillis()
+    ) : UpdateUiState
+
     data class Error(
         val message: String,
         val release: AppReleaseInfo? = null

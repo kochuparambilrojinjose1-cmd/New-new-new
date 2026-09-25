@@ -7,8 +7,11 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.model.AvlCategory
 import com.example.model.AvlPresets
+import com.example.model.ChecklistPhase
 import com.example.model.EventStatus
+import com.example.model.InventoryTransactionType
 import com.example.model.ItemStatus
+import com.example.model.LoadoutStatus
 import com.example.model.LogType
 import com.example.model.MemberAvailability
 import com.example.model.NotificationPriority
@@ -27,9 +30,15 @@ import java.util.UUID
         EquipmentItemEntity::class,
         SetupLogEntity::class,
         TeamNotificationEntity::class,
-        WarehouseAuditEntity::class
+        WarehouseAuditEntity::class,
+        EquipmentLoadoutEntity::class,
+        LoadoutItemEntity::class,
+        ChecklistItemEntity::class,
+        ChecklistTemplateEntity::class,
+        WarehouseInventoryEntity::class,
+        InventoryTransactionEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AvlDatabase : RoomDatabase() {
@@ -40,6 +49,9 @@ abstract class AvlDatabase : RoomDatabase() {
     abstract fun setupLogDao(): SetupLogDao
     abstract fun teamNotificationDao(): TeamNotificationDao
     abstract fun warehouseAuditDao(): WarehouseAuditDao
+    abstract fun equipmentLoadoutDao(): EquipmentLoadoutDao
+    abstract fun checklistItemDao(): ChecklistItemDao
+    abstract fun warehouseInventoryDao(): WarehouseInventoryDao
 
     companion object {
         @Volatile
@@ -71,6 +83,9 @@ abstract class AvlDatabase : RoomDatabase() {
             val equipmentDao = db.equipmentDao()
             val logDao = db.setupLogDao()
             val notifDao = db.teamNotificationDao()
+            val loadoutDao = db.equipmentLoadoutDao()
+            val checklistDao = db.checklistItemDao()
+            val inventoryDao = db.warehouseInventoryDao()
 
             val now = System.currentTimeMillis()
             val oneDayMs = 24 * 60 * 60 * 1000L
@@ -618,6 +633,950 @@ abstract class AvlDatabase : RoomDatabase() {
                 )
             )
             availDao.insertAll(availabilities)
+
+            // -------------------------------------------------------------
+            // Seed Master Warehouse Inventory Quantities
+            // -------------------------------------------------------------
+            val initialInventory = listOf(
+                // Audio
+                WarehouseInventoryEntity(
+                    id = "inv-aud-001",
+                    skuOrBarcode = "AUD-RF-01",
+                    itemName = "Shure Axient Digital Dual Handheld Mics",
+                    category = AvlCategory.AUDIO,
+                    department = WorkDepartment.AUDIO,
+                    modelNumber = "AD4D-US",
+                    manufacturer = "Shure",
+                    totalStockQty = 12,
+                    availableQty = 4,
+                    allocatedQty = 8,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 3,
+                    warehouseAisleBin = "Aisle 1 - Bay A - Shelf 2 (Mic Locker)",
+                    unitWeightLbs = 18.5,
+                    unitReplacementCost = 5400.0,
+                    notes = "Includes dual handheld transmitters, antennas, and network card"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-aud-002",
+                    skuOrBarcode = "AUD-RF-02",
+                    itemName = "Sennheiser EW-DX Wireless Bodypack & Lav",
+                    category = AvlCategory.AUDIO,
+                    department = WorkDepartment.AUDIO,
+                    modelNumber = "EW-DX SK",
+                    manufacturer = "Sennheiser",
+                    totalStockQty = 16,
+                    availableQty = 6,
+                    allocatedQty = 10,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 4,
+                    warehouseAisleBin = "Aisle 1 - Bay A - Shelf 3 (Mic Locker)",
+                    unitWeightLbs = 12.0,
+                    unitReplacementCost = 2800.0,
+                    notes = "Dante enabled dual-channel digital wireless"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-aud-003",
+                    skuOrBarcode = "AUD-MIX-01",
+                    itemName = "Yamaha QL5 32ch Digital Audio Mixer",
+                    category = AvlCategory.AUDIO,
+                    department = WorkDepartment.AUDIO,
+                    modelNumber = "QL5",
+                    manufacturer = "Yamaha",
+                    totalStockQty = 3,
+                    availableQty = 1,
+                    allocatedQty = 2,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 1,
+                    warehouseAisleBin = "Console Staging Bay 1",
+                    unitWeightLbs = 110.0,
+                    unitReplacementCost = 14500.0,
+                    notes = "Fitted in custom road case with doghouse"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-aud-004",
+                    skuOrBarcode = "AUD-SB-01",
+                    itemName = "Rio 3224-D2 Dante Stage Box",
+                    category = AvlCategory.AUDIO,
+                    department = WorkDepartment.AUDIO,
+                    modelNumber = "Rio3224-D2",
+                    manufacturer = "Yamaha",
+                    totalStockQty = 6,
+                    availableQty = 2,
+                    allocatedQty = 4,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 2,
+                    warehouseAisleBin = "Rack Bay 2",
+                    unitWeightLbs = 55.0,
+                    unitReplacementCost = 6200.0,
+                    notes = "Primary & Secondary Ethercon ports"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-aud-005",
+                    skuOrBarcode = "AUD-SPK-01",
+                    itemName = "d&b audiotechnik V-Series Array Tops",
+                    category = AvlCategory.AUDIO,
+                    department = WorkDepartment.AUDIO,
+                    modelNumber = "V8",
+                    manufacturer = "d&b audiotechnik",
+                    totalStockQty = 24,
+                    availableQty = 8,
+                    allocatedQty = 16,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 4,
+                    warehouseAisleBin = "Speaker Yard - Bay 1",
+                    unitWeightLbs = 75.0,
+                    unitReplacementCost = 8900.0,
+                    notes = "3-way passive line array element with rigging pins"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-aud-006",
+                    skuOrBarcode = "AUD-SUB-01",
+                    itemName = "d&b V-SUB Flyable Subwoofers",
+                    category = AvlCategory.AUDIO,
+                    department = WorkDepartment.AUDIO,
+                    modelNumber = "V-SUB",
+                    manufacturer = "d&b audiotechnik",
+                    totalStockQty = 12,
+                    availableQty = 4,
+                    allocatedQty = 8,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 2,
+                    warehouseAisleBin = "Speaker Yard - Bay 2",
+                    unitWeightLbs = 141.0,
+                    unitReplacementCost = 9200.0,
+                    notes = "Cardioid subwoofer with integrated rigging"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-aud-007",
+                    skuOrBarcode = "AUD-AMP-01",
+                    itemName = "d&b D80 4-Channel Power Amplifiers",
+                    category = AvlCategory.AUDIO,
+                    department = WorkDepartment.AUDIO,
+                    modelNumber = "D80",
+                    manufacturer = "d&b audiotechnik",
+                    totalStockQty = 8,
+                    availableQty = 2,
+                    allocatedQty = 6,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 2,
+                    warehouseAisleBin = "Amp Rack Alpha Bay",
+                    unitWeightLbs = 62.0,
+                    unitReplacementCost = 12800.0,
+                    notes = "4x 4000W into 4 ohms"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-aud-008",
+                    skuOrBarcode = "AUD-DI-01",
+                    itemName = "Radial J48 Active Direct Box (DI)",
+                    category = AvlCategory.AUDIO,
+                    department = WorkDepartment.AUDIO,
+                    modelNumber = "J48",
+                    manufacturer = "Radial Engineering",
+                    totalStockQty = 20,
+                    availableQty = 8,
+                    allocatedQty = 11,
+                    maintenanceQty = 1,
+                    minimumThresholdQty = 5,
+                    warehouseAisleBin = "Pelican DI Locker Shelf 1",
+                    unitWeightLbs = 2.0,
+                    unitReplacementCost = 249.0,
+                    notes = "1 unit currently on bench testing for ground hum"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-aud-009",
+                    skuOrBarcode = "AUD-STD-01",
+                    itemName = "K&M Heavy Duty Boom Mic Stands",
+                    category = AvlCategory.AUDIO,
+                    department = WorkDepartment.AUDIO,
+                    modelNumber = "210/9",
+                    manufacturer = "K&M",
+                    totalStockQty = 40,
+                    availableQty = 15,
+                    allocatedQty = 25,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 8,
+                    warehouseAisleBin = "Stand Cart 1",
+                    unitWeightLbs = 7.0,
+                    unitReplacementCost = 89.0,
+                    notes = "Heavy die-cast base with clutch locks"
+                ),
+
+                // Video
+                WarehouseInventoryEntity(
+                    id = "inv-vid-001",
+                    skuOrBarcode = "VID-LED-01",
+                    itemName = "Absen 2.9mm Indoor LED Wall Panel (500x500)",
+                    category = AvlCategory.VIDEO,
+                    department = WorkDepartment.VIDEO,
+                    modelNumber = "PL2.9 Pro",
+                    manufacturer = "Absen",
+                    totalStockQty = 96,
+                    availableQty = 40,
+                    allocatedQty = 56,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 16,
+                    warehouseAisleBin = "LED Flight Cases A1-A12",
+                    unitWeightLbs = 18.0,
+                    unitReplacementCost = 1200.0,
+                    notes = "NovaStar A8s-N receiving cards installed"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-vid-002",
+                    skuOrBarcode = "VID-PROC-01",
+                    itemName = "Novastar VX1000 All-in-One Video Processor",
+                    category = AvlCategory.VIDEO,
+                    department = WorkDepartment.VIDEO,
+                    modelNumber = "VX1000",
+                    manufacturer = "NovaStar",
+                    totalStockQty = 6,
+                    availableQty = 2,
+                    allocatedQty = 4,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 2,
+                    warehouseAisleBin = "Video Rack Alpha Shelf 2",
+                    unitWeightLbs = 24.0,
+                    unitReplacementCost = 4500.0,
+                    notes = "10x Gigabit Ethernet output ports"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-vid-003",
+                    skuOrBarcode = "VID-SW-01",
+                    itemName = "Blackmagic ATEM Constellation 2 M/E 4K",
+                    category = AvlCategory.VIDEO,
+                    department = WorkDepartment.VIDEO,
+                    modelNumber = "ATEM 2 M/E 4K",
+                    manufacturer = "Blackmagic Design",
+                    totalStockQty = 3,
+                    availableQty = 1,
+                    allocatedQty = 2,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 1,
+                    warehouseAisleBin = "Flypack Trunk 1",
+                    unitWeightLbs = 65.0,
+                    unitReplacementCost = 8995.0,
+                    notes = "20x 12G-SDI inputs, 12x 12G-SDI outputs"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-vid-004",
+                    skuOrBarcode = "VID-CAM-01",
+                    itemName = "Panasonic 4K PTZ Camera AW-UE150",
+                    category = AvlCategory.VIDEO,
+                    department = WorkDepartment.VIDEO,
+                    modelNumber = "AW-UE150W",
+                    manufacturer = "Panasonic",
+                    totalStockQty = 8,
+                    availableQty = 2,
+                    allocatedQty = 6,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 2,
+                    warehouseAisleBin = "PTZ Pelican Case Set 1-4",
+                    unitWeightLbs = 14.0,
+                    unitReplacementCost = 10500.0,
+                    notes = "4K 60p, 12G-SDI and NDI|HX support"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-vid-005",
+                    skuOrBarcode = "VID-CBL-01",
+                    itemName = "150ft 12G-SDI BNC Cable Drum",
+                    category = AvlCategory.VIDEO,
+                    department = WorkDepartment.VIDEO,
+                    modelNumber = "4794R-150",
+                    manufacturer = "Belden",
+                    totalStockQty = 16,
+                    availableQty = 6,
+                    allocatedQty = 10,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 4,
+                    warehouseAisleBin = "Cable Mezzanine Caddy 2",
+                    unitWeightLbs = 28.0,
+                    unitReplacementCost = 350.0,
+                    notes = "Ruggedized rubber jacket with Neutrik BNCs"
+                ),
+
+                // Lighting
+                WarehouseInventoryEntity(
+                    id = "inv-lgt-001",
+                    skuOrBarcode = "LGT-MOV-01",
+                    itemName = "Robe MegaPointe Hybrid Moving Heads",
+                    category = AvlCategory.LIGHTING,
+                    department = WorkDepartment.LIGHTING,
+                    modelNumber = "MegaPointe",
+                    manufacturer = "Robe",
+                    totalStockQty = 24,
+                    availableQty = 8,
+                    allocatedQty = 16,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 4,
+                    warehouseAisleBin = "Lighting Yard - Cases 1-12",
+                    unitWeightLbs = 72.0,
+                    unitReplacementCost = 9800.0,
+                    notes = "Discharge lamp checked; includes dual omega brackets"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-lgt-002",
+                    skuOrBarcode = "LGT-PAR-01",
+                    itemName = "Chauvet COLORado 2 Quad Zoom LED",
+                    category = AvlCategory.LIGHTING,
+                    department = WorkDepartment.LIGHTING,
+                    modelNumber = "COLORado 2-Quad",
+                    manufacturer = "Chauvet Professional",
+                    totalStockQty = 36,
+                    availableQty = 15,
+                    allocatedQty = 20,
+                    maintenanceQty = 1,
+                    minimumThresholdQty = 6,
+                    warehouseAisleBin = "Lighting Yard - Road Cases A-F",
+                    unitWeightLbs = 22.0,
+                    unitReplacementCost = 1150.0,
+                    notes = "1 unit under repair for lens replacement"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-lgt-003",
+                    skuOrBarcode = "LGT-CNS-01",
+                    itemName = "GrandMA3 Command Wing onPC Setup",
+                    category = AvlCategory.LIGHTING,
+                    department = WorkDepartment.LIGHTING,
+                    modelNumber = "gMA3 onPC Wing",
+                    manufacturer = "MA Lighting",
+                    totalStockQty = 3,
+                    availableQty = 1,
+                    allocatedQty = 2,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 1,
+                    warehouseAisleBin = "Console Staging Bay 2",
+                    unitWeightLbs = 58.0,
+                    unitReplacementCost = 8400.0,
+                    notes = "Custom shock-mounted flight case with dual touchscreens"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-lgt-004",
+                    skuOrBarcode = "LGT-AST-01",
+                    itemName = "Astera Titan Tube 8-Way Wireless Kit",
+                    category = AvlCategory.LIGHTING,
+                    department = WorkDepartment.LIGHTING,
+                    modelNumber = "FP1-SET",
+                    manufacturer = "Astera",
+                    totalStockQty = 4,
+                    availableQty = 2,
+                    allocatedQty = 2,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 1,
+                    warehouseAisleBin = "Astera Charging Rack",
+                    unitWeightLbs = 78.0,
+                    unitReplacementCost = 7200.0,
+                    notes = "Includes PowerBox, ART7 transmitter, and rigging eyes"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-lgt-005",
+                    skuOrBarcode = "LGT-HAZ-01",
+                    itemName = "Ultratec Radiance Hazer (DMX)",
+                    category = AvlCategory.LIGHTING,
+                    department = WorkDepartment.LIGHTING,
+                    modelNumber = "Radiance DMX",
+                    manufacturer = "Ultratec Special Effects",
+                    totalStockQty = 4,
+                    availableQty = 1,
+                    allocatedQty = 3,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 1,
+                    warehouseAisleBin = "Atmospherics Staging Shelf",
+                    unitWeightLbs = 38.0,
+                    unitReplacementCost = 2100.0,
+                    notes = "Pre-filled with Luminous 7 fluid"
+                ),
+
+                // Rigging & Power
+                WarehouseInventoryEntity(
+                    id = "inv-rig-001",
+                    skuOrBarcode = "RIG-MOT-01",
+                    itemName = "CM Lodestar 1-Ton Electric Chain Hoist",
+                    category = AvlCategory.RIGGING_POWER,
+                    department = WorkDepartment.RIGGING_POWER,
+                    modelNumber = "Lodestar Classic 1T",
+                    manufacturer = "Columbus McKinnon",
+                    totalStockQty = 16,
+                    availableQty = 4,
+                    allocatedQty = 12,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 4,
+                    warehouseAisleBin = "Rigging Motor Bay - Boxes 1-8",
+                    unitWeightLbs = 180.0,
+                    unitReplacementCost = 4800.0,
+                    notes = "60ft lift chain, 7-pin Socapex connector, load inspection tags current"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-rig-002",
+                    skuOrBarcode = "PWR-DST-01",
+                    itemName = "Motion Labs 100A 3-Phase Power Distro",
+                    category = AvlCategory.RIGGING_POWER,
+                    department = WorkDepartment.RIGGING_POWER,
+                    modelNumber = "ML-100A-3P",
+                    manufacturer = "Motion Laboratories",
+                    totalStockQty = 4,
+                    availableQty = 1,
+                    allocatedQty = 3,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 1,
+                    warehouseAisleBin = "Power Distro Room",
+                    unitWeightLbs = 95.0,
+                    unitReplacementCost = 5200.0,
+                    notes = "Camlock 400A thru, branch breakers for Edison and L21-30"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-rig-003",
+                    skuOrBarcode = "RIG-TRS-01",
+                    itemName = "Global Truss 12in Aluminum Box Truss (10ft)",
+                    category = AvlCategory.RIGGING_POWER,
+                    department = WorkDepartment.RIGGING_POWER,
+                    modelNumber = "F34-300",
+                    manufacturer = "Global Truss",
+                    totalStockQty = 32,
+                    availableQty = 8,
+                    allocatedQty = 24,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 6,
+                    warehouseAisleBin = "Truss Yard Dolly Cart 1-4",
+                    unitWeightLbs = 42.0,
+                    unitReplacementCost = 650.0,
+                    notes = "Standard conical coupling system with steel pins"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-rig-004",
+                    skuOrBarcode = "RIG-RMP-01",
+                    itemName = "Yellow Jacket 5-Channel Heavy Duty Ramps",
+                    category = AvlCategory.RIGGING_POWER,
+                    department = WorkDepartment.RIGGING_POWER,
+                    modelNumber = "YJ5-125",
+                    manufacturer = "Checkers Safety",
+                    totalStockQty = 30,
+                    availableQty = 10,
+                    allocatedQty = 20,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 5,
+                    warehouseAisleBin = "Ramp Cart Staging",
+                    unitWeightLbs = 26.0,
+                    unitReplacementCost = 220.0,
+                    notes = "ADA crossover caps included"
+                ),
+
+                // Cables & Accessories
+                WarehouseInventoryEntity(
+                    id = "inv-cbl-001",
+                    skuOrBarcode = "CBL-XLR-100",
+                    itemName = "100ft ProCo Heavy Duty XLR Cable",
+                    category = AvlCategory.CABLES_ACCESSORIES,
+                    department = WorkDepartment.AUDIO,
+                    modelNumber = "ArmorFlex-100",
+                    manufacturer = "ProCo",
+                    totalStockQty = 50,
+                    availableQty = 20,
+                    allocatedQty = 30,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 10,
+                    warehouseAisleBin = "Cable Trunk #1",
+                    unitWeightLbs = 6.5,
+                    unitReplacementCost = 65.0,
+                    notes = "Neutrik NC3-XX black gold connectors"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-cbl-002",
+                    skuOrBarcode = "CBL-ETH-01",
+                    itemName = "150ft Ruggedized Cat6 Ethercon Reel",
+                    category = AvlCategory.CABLES_ACCESSORIES,
+                    department = WorkDepartment.AUDIO,
+                    modelNumber = "ProPlex-Cat6-150",
+                    manufacturer = "TMB ProPlex",
+                    totalStockQty = 12,
+                    availableQty = 4,
+                    allocatedQty = 8,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 3,
+                    warehouseAisleBin = "Network Cable Reel Caddy",
+                    unitWeightLbs = 18.0,
+                    unitReplacementCost = 280.0,
+                    notes = "Shielded tactical Cat6 with Schill reel"
+                ),
+                WarehouseInventoryEntity(
+                    id = "inv-cbl-003",
+                    skuOrBarcode = "CBL-PWR-25",
+                    itemName = "25ft 12/3 SOOW Edison Stingers",
+                    category = AvlCategory.CABLES_ACCESSORIES,
+                    department = WorkDepartment.RIGGING_POWER,
+                    modelNumber = "SOOW-12/3-25",
+                    manufacturer = "Carol Cable",
+                    totalStockQty = 60,
+                    availableQty = 25,
+                    allocatedQty = 35,
+                    maintenanceQty = 0,
+                    minimumThresholdQty = 15,
+                    warehouseAisleBin = "Stinger Trunks A & B",
+                    unitWeightLbs = 5.0,
+                    unitReplacementCost = 55.0,
+                    notes = "Heavy duty Hubbell industrial plugs"
+                )
+            )
+            inventoryDao.insertAllInventoryItems(initialInventory)
+
+            // -------------------------------------------------------------
+            // Seed Checklist Templates & Event Checklist Items
+            // -------------------------------------------------------------
+            val checklistTemplates = listOf(
+                ChecklistTemplateEntity(
+                    id = "tmpl-prep-01",
+                    phase = ChecklistPhase.PREP_PULL,
+                    department = WorkDepartment.PRODUCTION_MGMT,
+                    title = "Pull sheet verification & truck loading manifest match",
+                    description = "Cross-reference target quantities against warehouse pull sheets before staging.",
+                    isCritical = true,
+                    sortOrder = 1
+                ),
+                ChecklistTemplateEntity(
+                    id = "tmpl-prep-02",
+                    phase = ChecklistPhase.PREP_PULL,
+                    department = WorkDepartment.AUDIO,
+                    title = "Battery condition & RF transmitter scan",
+                    description = "Ensure all handhelds & bodypacks have fresh AA/rechargeable packs at >85% capacity.",
+                    isCritical = false,
+                    sortOrder = 2
+                ),
+                ChecklistTemplateEntity(
+                    id = "tmpl-truck-01",
+                    phase = ChecklistPhase.TRUCK_PACK,
+                    department = WorkDepartment.RIGGING_POWER,
+                    title = "Heavy motor trunks against front bulkhead",
+                    description = "Position CM Lodestar hoists and main distro cases over axle load points.",
+                    isCritical = true,
+                    sortOrder = 1
+                ),
+                ChecklistTemplateEntity(
+                    id = "tmpl-truck-02",
+                    phase = ChecklistPhase.TRUCK_PACK,
+                    department = WorkDepartment.PRODUCTION_MGMT,
+                    title = "Load-lock bars and ratchet straps tensioned",
+                    description = "Verify cargo containment before truck departure.",
+                    isCritical = true,
+                    sortOrder = 2
+                ),
+                ChecklistTemplateEntity(
+                    id = "tmpl-rig-01",
+                    phase = ChecklistPhase.RIGGING_SAFETY,
+                    department = WorkDepartment.RIGGING_POWER,
+                    title = "Inspect motor hoist chains and safety steels",
+                    description = "Inspect chain for twists, verify safety latch on top/bottom hooks, attach secondary rated steels.",
+                    isCritical = true,
+                    sortOrder = 1
+                ),
+                ChecklistTemplateEntity(
+                    id = "tmpl-rig-02",
+                    phase = ChecklistPhase.RIGGING_SAFETY,
+                    department = WorkDepartment.RIGGING_POWER,
+                    title = "Check load cell balance before trim elevation",
+                    description = "Ensure weight is evenly distributed within safe working load (SWL) limits.",
+                    isCritical = true,
+                    sortOrder = 2
+                ),
+                ChecklistTemplateEntity(
+                    id = "tmpl-pwr-01",
+                    phase = ChecklistPhase.POWER_DISTRO,
+                    department = WorkDepartment.RIGGING_POWER,
+                    title = "Camlock connection sequence (Ground, Neutral, Hots)",
+                    description = "Verify Green -> White -> Black -> Red -> Blue sequence before energizing main breaker.",
+                    isCritical = true,
+                    sortOrder = 1
+                ),
+                ChecklistTemplateEntity(
+                    id = "tmpl-pwr-02",
+                    phase = ChecklistPhase.POWER_DISTRO,
+                    department = WorkDepartment.RIGGING_POWER,
+                    title = "Voltage meter verification (L1-N, L2-N, L3-N ~120V)",
+                    description = "Confirm phase-to-neutral voltages are within 118-122V with zero ground potential.",
+                    isCritical = true,
+                    sortOrder = 2
+                ),
+                ChecklistTemplateEntity(
+                    id = "tmpl-sig-01",
+                    phase = ChecklistPhase.SIGNAL_FLOW,
+                    department = WorkDepartment.AUDIO,
+                    title = "Dante network lock & master word clock sync",
+                    description = "Ensure Rio stage boxes, QL5 console, and D80 amps show green sync locks in Dante Controller.",
+                    isCritical = true,
+                    sortOrder = 1
+                ),
+                ChecklistTemplateEntity(
+                    id = "tmpl-sig-02",
+                    phase = ChecklistPhase.SIGNAL_FLOW,
+                    department = WorkDepartment.VIDEO,
+                    title = "Video processor EDID and genlock verification",
+                    description = "Test NovaStar VX1000 input handshake with ATEM switcher at 3840x2160@60Hz.",
+                    isCritical = false,
+                    sortOrder = 2
+                ),
+                ChecklistTemplateEntity(
+                    id = "tmpl-chk-01",
+                    phase = ChecklistPhase.SOUNDCHECK_FOCUS,
+                    department = WorkDepartment.AUDIO,
+                    title = "Pink noise line check & array phase alignment",
+                    description = "Verify all 8 tops and 4 subs fire with correct acoustic delay and polar response.",
+                    isCritical = true,
+                    sortOrder = 1
+                ),
+                ChecklistTemplateEntity(
+                    id = "tmpl-chk-02",
+                    phase = ChecklistPhase.SOUNDCHECK_FOCUS,
+                    department = WorkDepartment.LIGHTING,
+                    title = "Moving head home positions & DMX universe check",
+                    description = "Verify all Robe MegaPointes respond to pan/tilt calibration and GrandMA3 presets.",
+                    isCritical = false,
+                    sortOrder = 2
+                ),
+                ChecklistTemplateEntity(
+                    id = "tmpl-show-01",
+                    phase = ChecklistPhase.SHOW_READY,
+                    department = WorkDepartment.PRODUCTION_MGMT,
+                    title = "FOH to Stage Manager comms & talkback hot",
+                    description = "Establish clear wireless comms channel between A1, V1, L1, and Stage Management.",
+                    isCritical = true,
+                    sortOrder = 1
+                ),
+                ChecklistTemplateEntity(
+                    id = "tmpl-show-02",
+                    phase = ChecklistPhase.SHOW_READY,
+                    department = WorkDepartment.AUDIO,
+                    title = "Spare artist handheld mic on standby",
+                    description = "Verify backup RF handheld channel is unmuted and placed on stage right console.",
+                    isCritical = true,
+                    sortOrder = 2
+                ),
+                ChecklistTemplateEntity(
+                    id = "tmpl-str-01",
+                    phase = ChecklistPhase.STRIKE_AUDIT,
+                    department = WorkDepartment.AUDIO,
+                    title = "All wireless transmitters & capsule audit",
+                    description = "Collect all 4 Shure Axient handhelds and bodypacks into locked mic trunk.",
+                    isCritical = true,
+                    sortOrder = 1
+                ),
+                ChecklistTemplateEntity(
+                    id = "tmpl-str-02",
+                    phase = ChecklistPhase.STRIKE_AUDIT,
+                    department = WorkDepartment.PRODUCTION_MGMT,
+                    title = "Warehouse return count & damage sign-off",
+                    description = "Log any damaged fixtures, missing cables, or discrepancies before releasing crew.",
+                    isCritical = true,
+                    sortOrder = 2
+                )
+            )
+            checklistDao.insertAllTemplates(checklistTemplates)
+
+            // Seed Event 1 (Neon Horizon Tour) Live Checklist Items
+            val event1Checklist = checklistTemplates.mapIndexed { idx, tmpl ->
+                val isCompleted = when (tmpl.phase) {
+                    ChecklistPhase.PREP_PULL,
+                    ChecklistPhase.TRUCK_PACK,
+                    ChecklistPhase.RIGGING_SAFETY,
+                    ChecklistPhase.POWER_DISTRO -> true
+                    ChecklistPhase.SIGNAL_FLOW -> idx % 2 == 0
+                    else -> false
+                }
+                ChecklistItemEntity(
+                    id = "chk-evt1-${tmpl.id}",
+                    eventId = event1Id,
+                    phase = tmpl.phase,
+                    department = tmpl.department,
+                    title = tmpl.title,
+                    description = tmpl.description,
+                    isCompleted = isCompleted,
+                    completedBy = if (isCompleted) "Elena Ramos (Lead)" else "",
+                    completedAt = if (isCompleted) now - (oneHourMs * 2) else null,
+                    isCritical = tmpl.isCritical,
+                    sortOrder = tmpl.sortOrder,
+                    verificationNote = if (isCompleted) "Verified OK during load-in" else ""
+                )
+            }
+            checklistDao.insertAllChecklistItems(event1Checklist)
+
+            // Seed Event 3 (Tech Summit) Checklist Items
+            val event3Checklist = checklistTemplates.map { tmpl ->
+                val isCompleted = tmpl.phase == ChecklistPhase.PREP_PULL
+                ChecklistItemEntity(
+                    id = "chk-evt3-${tmpl.id}",
+                    eventId = event3Id,
+                    phase = tmpl.phase,
+                    department = tmpl.department,
+                    title = tmpl.title,
+                    description = tmpl.description,
+                    isCompleted = isCompleted,
+                    completedBy = if (isCompleted) "Carlos Ruiz (Video Director)" else "",
+                    completedAt = if (isCompleted) now - (oneHourMs * 1) else null,
+                    isCritical = tmpl.isCritical,
+                    sortOrder = tmpl.sortOrder,
+                    verificationNote = if (isCompleted) "Pulled from warehouse racks" else ""
+                )
+            }
+            checklistDao.insertAllChecklistItems(event3Checklist)
+
+            // -------------------------------------------------------------
+            // Seed Equipment Loadouts & Items
+            // -------------------------------------------------------------
+            val loadout1Id = "ldo-arena-pa-001"
+            val loadout1 = EquipmentLoadoutEntity(
+                id = loadout1Id,
+                eventId = event1Id,
+                name = "Main Stage Concert PA & Audio Rig",
+                department = WorkDepartment.AUDIO,
+                truckOrVehicle = "Truck 01 (53ft Semi)",
+                targetWeightLbs = 8400.0,
+                powerDrawAmps = 120,
+                status = LoadoutStatus.LOADED_ON_TRUCK,
+                assignedLeadTech = "Dave Miller (Chief Audio)",
+                notes = "FOH array & subs package with Dante primary & secondary network cards",
+                createdAt = now - (oneDayMs * 2)
+            )
+
+            val loadout1Items = listOf(
+                LoadoutItemEntity(
+                    id = UUID.randomUUID().toString(),
+                    loadoutId = loadout1Id,
+                    inventoryItemId = "inv-aud-005",
+                    itemName = "d&b audiotechnik V-Series Array Tops",
+                    category = AvlCategory.AUDIO,
+                    requiredQuantity = 8,
+                    packedQuantity = 8,
+                    loadedQuantity = 8,
+                    caseOrFlightRack = "Speaker Dolly Array 1",
+                    barcodeOrRfid = "AUD-SPK-01",
+                    isVerified = true
+                ),
+                LoadoutItemEntity(
+                    id = UUID.randomUUID().toString(),
+                    loadoutId = loadout1Id,
+                    inventoryItemId = "inv-aud-006",
+                    itemName = "d&b V-SUB Flyable Subwoofers",
+                    category = AvlCategory.AUDIO,
+                    requiredQuantity = 4,
+                    packedQuantity = 4,
+                    loadedQuantity = 4,
+                    caseOrFlightRack = "Speaker Dolly Array 2",
+                    barcodeOrRfid = "AUD-SUB-01",
+                    isVerified = true
+                ),
+                LoadoutItemEntity(
+                    id = UUID.randomUUID().toString(),
+                    loadoutId = loadout1Id,
+                    inventoryItemId = "inv-aud-007",
+                    itemName = "d&b D80 4ch Power Amplifiers",
+                    category = AvlCategory.AUDIO,
+                    requiredQuantity = 2,
+                    packedQuantity = 2,
+                    loadedQuantity = 2,
+                    caseOrFlightRack = "Amp Rack Alpha",
+                    barcodeOrRfid = "AUD-AMP-01",
+                    isVerified = true
+                ),
+                LoadoutItemEntity(
+                    id = UUID.randomUUID().toString(),
+                    loadoutId = loadout1Id,
+                    inventoryItemId = "inv-aud-003",
+                    itemName = "Yamaha QL5 32ch Digital Audio Mixer",
+                    category = AvlCategory.AUDIO,
+                    requiredQuantity = 1,
+                    packedQuantity = 1,
+                    loadedQuantity = 1,
+                    caseOrFlightRack = "Console Road Case #1",
+                    barcodeOrRfid = "AUD-MIX-01",
+                    isVerified = true
+                ),
+                LoadoutItemEntity(
+                    id = UUID.randomUUID().toString(),
+                    loadoutId = loadout1Id,
+                    inventoryItemId = "inv-aud-001",
+                    itemName = "Shure Axient Digital Dual Handheld Mics",
+                    category = AvlCategory.AUDIO,
+                    requiredQuantity = 4,
+                    packedQuantity = 4,
+                    loadedQuantity = 4,
+                    caseOrFlightRack = "Mic Trunk A",
+                    barcodeOrRfid = "AUD-RF-01",
+                    isVerified = true
+                )
+            )
+
+            val loadout2Id = "ldo-arena-lgt-002"
+            val loadout2 = EquipmentLoadoutEntity(
+                id = loadout2Id,
+                eventId = event1Id,
+                name = "Arena Intelligent Lighting & Truss Loadout",
+                department = WorkDepartment.LIGHTING,
+                truckOrVehicle = "Truck 01 (53ft Semi)",
+                targetWeightLbs = 4200.0,
+                powerDrawAmps = 80,
+                status = LoadoutStatus.LOADED_ON_TRUCK,
+                assignedLeadTech = "Sarah Chen (Lighting Director)",
+                notes = "8 moving heads, 12 zoom pars, hazer and GrandMA3 command wing",
+                createdAt = now - (oneDayMs * 2)
+            )
+
+            val loadout2Items = listOf(
+                LoadoutItemEntity(
+                    id = UUID.randomUUID().toString(),
+                    loadoutId = loadout2Id,
+                    inventoryItemId = "inv-lgt-001",
+                    itemName = "Robe MegaPointe Hybrid Moving Heads",
+                    category = AvlCategory.LIGHTING,
+                    requiredQuantity = 8,
+                    packedQuantity = 8,
+                    loadedQuantity = 8,
+                    caseOrFlightRack = "Dual Flight Cases 1-4",
+                    barcodeOrRfid = "LGT-MOV-01",
+                    isVerified = true
+                ),
+                LoadoutItemEntity(
+                    id = UUID.randomUUID().toString(),
+                    loadoutId = loadout2Id,
+                    inventoryItemId = "inv-lgt-002",
+                    itemName = "Chauvet COLORado 2 Quad Zoom LED",
+                    category = AvlCategory.LIGHTING,
+                    requiredQuantity = 12,
+                    packedQuantity = 12,
+                    loadedQuantity = 12,
+                    caseOrFlightRack = "6-Way Road Cases A & B",
+                    barcodeOrRfid = "LGT-PAR-01",
+                    isVerified = true
+                ),
+                LoadoutItemEntity(
+                    id = UUID.randomUUID().toString(),
+                    loadoutId = loadout2Id,
+                    inventoryItemId = "inv-lgt-003",
+                    itemName = "GrandMA3 Command Wing onPC Setup",
+                    category = AvlCategory.LIGHTING,
+                    requiredQuantity = 1,
+                    packedQuantity = 1,
+                    loadedQuantity = 1,
+                    caseOrFlightRack = "Lighting FOH Case #1",
+                    barcodeOrRfid = "LGT-CNS-01",
+                    isVerified = true
+                )
+            )
+
+            val loadout3Id = "ldo-video-wall-003"
+            val loadout3 = EquipmentLoadoutEntity(
+                id = loadout3Id,
+                eventId = event3Id,
+                name = "Corporate 4K Video LED Wall Flypack",
+                department = WorkDepartment.VIDEO,
+                truckOrVehicle = "Truck 02 (26ft Box)",
+                targetWeightLbs = 5100.0,
+                powerDrawAmps = 60,
+                status = LoadoutStatus.STAGED_IN_BAY,
+                assignedLeadTech = "Carlos Ruiz (Video Director)",
+                notes = "24 panels of Absen 2.9mm wall with Novastar processor and PTZ cameras",
+                createdAt = now - (oneDayMs * 1)
+            )
+
+            val loadout3Items = listOf(
+                LoadoutItemEntity(
+                    id = UUID.randomUUID().toString(),
+                    loadoutId = loadout3Id,
+                    inventoryItemId = "inv-vid-001",
+                    itemName = "Absen 2.9mm Indoor LED Wall Panel",
+                    category = AvlCategory.VIDEO,
+                    requiredQuantity = 24,
+                    packedQuantity = 16,
+                    loadedQuantity = 0,
+                    caseOrFlightRack = "LED Cases 1-3",
+                    barcodeOrRfid = "VID-LED-01",
+                    isVerified = false
+                ),
+                LoadoutItemEntity(
+                    id = UUID.randomUUID().toString(),
+                    loadoutId = loadout3Id,
+                    inventoryItemId = "inv-vid-002",
+                    itemName = "Novastar VX1000 All-in-One Video Processor",
+                    category = AvlCategory.VIDEO,
+                    requiredQuantity = 2,
+                    packedQuantity = 2,
+                    loadedQuantity = 0,
+                    caseOrFlightRack = "Video Rack 1",
+                    barcodeOrRfid = "VID-PROC-01",
+                    isVerified = true
+                ),
+                LoadoutItemEntity(
+                    id = UUID.randomUUID().toString(),
+                    loadoutId = loadout3Id,
+                    inventoryItemId = "inv-vid-004",
+                    itemName = "Panasonic 4K PTZ Camera AW-UE150",
+                    category = AvlCategory.VIDEO,
+                    requiredQuantity = 3,
+                    packedQuantity = 0,
+                    loadedQuantity = 0,
+                    caseOrFlightRack = "Pelican PTZ Case A",
+                    barcodeOrRfid = "VID-CAM-01",
+                    isVerified = false
+                )
+            )
+
+            loadoutDao.insertAllLoadouts(listOf(loadout1, loadout2, loadout3))
+            loadoutDao.insertAllLoadoutItems(loadout1Items + loadout2Items + loadout3Items)
+
+            // -------------------------------------------------------------
+            // Seed Initial Inventory Transactions
+            // -------------------------------------------------------------
+            val initialTransactions = listOf(
+                InventoryTransactionEntity(
+                    id = UUID.randomUUID().toString(),
+                    inventoryItemId = "inv-aud-005",
+                    eventId = event1Id,
+                    loadoutId = loadout1Id,
+                    transactionType = InventoryTransactionType.DISPATCH_LOADOUT,
+                    quantityDelta = -8,
+                    previousAvailableQty = 16,
+                    newAvailableQty = 8,
+                    technicianName = "Dave Miller",
+                    timestamp = now - (oneDayMs * 2),
+                    referenceNotes = "Allocated 8 tops to Neon Horizon Tour"
+                ),
+                InventoryTransactionEntity(
+                    id = UUID.randomUUID().toString(),
+                    inventoryItemId = "inv-lgt-001",
+                    eventId = event1Id,
+                    loadoutId = loadout2Id,
+                    transactionType = InventoryTransactionType.DISPATCH_LOADOUT,
+                    quantityDelta = -16,
+                    previousAvailableQty = 24,
+                    newAvailableQty = 8,
+                    technicianName = "Sarah Chen",
+                    timestamp = now - (oneDayMs * 2),
+                    referenceNotes = "Dispatched 16 MegaPointes on Truck 01"
+                ),
+                InventoryTransactionEntity(
+                    id = UUID.randomUUID().toString(),
+                    inventoryItemId = "inv-lgt-002",
+                    eventId = event2Id,
+                    loadoutId = null,
+                    transactionType = InventoryTransactionType.BENCH_MAINTENANCE,
+                    quantityDelta = -1,
+                    previousAvailableQty = 16,
+                    newAvailableQty = 15,
+                    technicianName = "Rachel Adams",
+                    timestamp = now - (oneDayMs * 1),
+                    referenceNotes = "Sent Chauvet par with cracked lens to repair bench"
+                ),
+                InventoryTransactionEntity(
+                    id = UUID.randomUUID().toString(),
+                    inventoryItemId = "inv-aud-008",
+                    eventId = event2Id,
+                    loadoutId = null,
+                    transactionType = InventoryTransactionType.BENCH_MAINTENANCE,
+                    quantityDelta = -1,
+                    previousAvailableQty = 9,
+                    newAvailableQty = 8,
+                    technicianName = "Rachel Adams",
+                    timestamp = now - (oneDayMs * 1),
+                    referenceNotes = "Flagged DI box for phantom power switch replacement"
+                )
+            )
+            inventoryDao.insertAllTransactions(initialTransactions)
         }
     }
 
